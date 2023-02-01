@@ -51,7 +51,7 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
   // For descriptions of these settings, see the (non-default) constructor
   private int compressionLevel = 3;
   private boolean closeFrameOnFlush = true;
-  private String filePath;
+  private String file;
   private boolean useFourByteEncoding = false;
 
   /**
@@ -120,11 +120,11 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
   }
 
   public void setFile (String file) {
-    filePath = file;
+    this.file = file;
   }
 
   public synchronized String getFile () {
-    return filePath;
+    return file;
   }
 
   /**
@@ -375,11 +375,11 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
   }
 
   private void sanitizeFilePath () {
-    if (null == filePath) {
+    if (null == file) {
       throw new IllegalArgumentException("file option not set.");
     }
     // Trim surrounding spaces
-    filePath = filePath.trim();
+    file = file.trim();
   }
 
   /**
@@ -388,7 +388,7 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
    * @throws IOException on I/O error
    */
   private void createOutputStream () throws IOException {
-    FileOutputStream fileOutputStream = createOutputFile(filePath);
+    FileOutputStream fileOutputStream = createOutputFile(file);
     countingOutputStream = new CountingOutputStream(fileOutputStream);
     ZstdOutputStream zstdOutputStream =
         new ZstdOutputStream(countingOutputStream, compressionLevel);
