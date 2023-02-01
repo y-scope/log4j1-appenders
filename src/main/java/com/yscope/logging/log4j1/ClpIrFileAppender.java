@@ -393,6 +393,10 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
     ZstdOutputStream zstdOutputStream =
         new ZstdOutputStream(countingOutputStream, compressionLevel);
     zstdOutputStream.setCloseFrameOnFlush(closeFrameOnFlush);
+    // Get the local time zone in case we need to determine the time zone
+    // of timestamps printed in the content of log messages. This is not the
+    // time zone used to display log messages to the user (that will be
+    // determined by the user's locale, etc.).
     String timeZoneId = ZonedDateTime.now().getZone().toString();
     if (useFourByteEncoding) {
       clpIrOutputStream =
