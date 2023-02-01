@@ -48,6 +48,7 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
   // Appender settings
   // NOTE: It may appear that these settings are never set but Log4j sets these
   // through reflection
+  // For descriptions of these settings, see the (non-default) constructor
   private int compressionLevel = 3;
   private boolean closeFrameOnFlush = true;
   private String filePath;
@@ -66,11 +67,16 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
    * @param layout Log4j layout for formatting log events. Only
    * {@code org.apache.log4j.EnhancedPatternLayout},
    * {@code org.apache.log4j.PatternLayout}, and
-   * {@code org.apache.log4j.SimpleLayout} are supported.
-   * @param useFourByteEncoding Whether to use the four-byte encoding instead
-   * of the default eight-byte encoding
+   * {@code org.apache.log4j.SimpleLayout} are supported. For PatternLayouts,
+   * callers should not add a date conversion pattern since this appender
+   * stores timestamps and messages separately. Any date patterns found in the
+   * conversion pattern will be removed.
+   * @param useFourByteEncoding Whether to use CLP's four-byte encoding instead
+   * of the default eight-byte encoding. The four-byte encoding has lower
+   * memory usage but can also result in lower compression ratio.
    * @param closeFrameOnFlush Whether to close the Zstandard frame on flush
-   * @param compressionLevel Compression level to use for Zstandard
+   * @param compressionLevel Compression level to use for Zstandard. Valid
+   * levels are 1 to 19.
    * @throws IOException on I/O error
    */
   public ClpIrFileAppender (
