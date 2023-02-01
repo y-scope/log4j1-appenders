@@ -278,12 +278,10 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
       throw new IllegalArgumentException("layout type " + layout.getClass().getName()
                                              + " not supported.");
     } else if (layout instanceof EnhancedPatternLayout) {
-      EnhancedPatternLayout patternLayout = (EnhancedPatternLayout)layout;
-      String conversionPattern = processConversionPattern(patternLayout.getConversionPattern());
+      String conversionPattern = processConversionPattern(layout);
       layout = new EnhancedPatternLayout(conversionPattern);
     } else if (layout instanceof PatternLayout) {
-      PatternLayout patternLayout = (PatternLayout)layout;
-      String conversionPattern = processConversionPattern(patternLayout.getConversionPattern());
+      String conversionPattern = processConversionPattern(layout);
       layout = new PatternLayout(conversionPattern);
     } else if (layout instanceof SimpleLayout) {
       timestampPattern = "";
@@ -306,22 +304,22 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
   }
 
   /**
-   * Gets the timestamp pattern from the given Log4j PatternLayout conversion
-   * pattern and creates a conversion pattern that doesn't contain any
-   * date conversion patterns.
+   * Gets the timestamp pattern from the given Log4j Layout's conversion pattern
+   * and creates a conversion pattern that doesn't contain any date conversion
+   * patterns.
    * <p></p>
    * E.g., if the conversion pattern is
    * "%d{yyyy-MM-dd HH:mm:ss.SSSZ} %p [%c{1}] %m%n", this method will set the
    * timestamp pattern to "yyyy-MM-dd HH:mm:ss.SSSZ" and create the conversion
    * pattern, " %p [%c{1}] %m%n".
-   * @param conversionPattern A Log4j PatternLayout conversion pattern
+   * @param layout Log4j layout for formatting log events
    * @return The conversion pattern without date conversion patterns
    */
-  private String processConversionPattern (String conversionPattern) {
+  private String processConversionPattern (Layout layout) {
     DateConversionPatternExtractor datePatternExtractor =
-        new DateConversionPatternExtractor(conversionPattern);
+        new DateConversionPatternExtractor(layout);
 
-    for (SubstringBounds datePattern : datePatternExtractor.getDateConversionPatterns()) {
+    for (DateConversionPattern datePattern : datePatternExtractor.getDateConversionPatterns()) {
       if (null != timestampPattern) {
         logError("Found multiple date conversion specifiers in pattern. Only the first will "
                      + "be preserved.");
@@ -329,23 +327,20 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
       }
 
       // + 1 is the character after the '%'
-      char conversionSpecifier = conversionPattern.charAt(datePattern.beginOffset + 1);
-      if ('r' == conversionSpecifier) {
+      if ('r' == datePattern.specifier) {
         logError("%r is unsupported and will be ignored.");
-      } else if ('d' == conversionSpecifier) {
-        if (datePattern.beginOffset > 0) {
+      } else if ('d' == datePattern.specifier) {
+        if (datePattern.offsetInConversionPattern > 0) {
           logError("Position of date conversion specifier (%d) will not be preserved.");
         }
 
-        if (datePattern.endOffset == datePattern.beginOffset + 2) {
+        if (null == datePattern.format) {
           // Pattern is "%d" which implies ISO8601 ("yyyy-MM-dd HH:mm:ss,SSS")
           timestampPattern = "yyyy-MM-dd HH:mm:ss,SSS";
           estimatedFormattedTimestampLength = timestampPattern.length();
         } else {
           // Pattern is "%d{...}"
-          String dateFormat =
-              conversionPattern.substring(datePattern.beginOffset + 3, datePattern.endOffset - 1);
-          switch (dateFormat) {
+          switch (datePattern.format) {
             case "ABSOLUTE":
               timestampPattern = "HH:mm:ss,SSS";
               estimatedFormattedTimestampLength = timestampPattern.length();
@@ -359,7 +354,7 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
               estimatedFormattedTimestampLength = timestampPattern.length();
               break;
             default:
-              timestampPattern = dateFormat;
+              timestampPattern = datePattern.format;
               // NOTE: We use getBytes(ISO_8859_1) since the user's dateFormat
               // may contain Unicode characters
               estimatedFormattedTimestampLength =
