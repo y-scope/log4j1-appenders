@@ -94,16 +94,10 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
     setCompressionLevel(compressionLevel);
     setCloseFrameOnFlush(closeFrameOnFlush);
 
-    super.activateOptions();
-
-    try {
-      validateOptionsAndInit();
-    } catch (Exception ex) {
-      closed = true;
-      throw ex;
-    }
-
-    activated = true;
+    // NOTE: We don't enable the shutdown hook since the caller should handle
+    // closing the appender properly when shutting down (enabling the hook may
+    // also be confusing).
+    activateOptionsHelper(false);
   }
 
   // Public methods
@@ -173,7 +167,8 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
   }
 
   /**
-   * Activates the appender's options
+   * Activates the appender's options. This should not be called when this
+   * appender is instantiated manually.
    */
   @Override
   public void activateOptions () {
@@ -187,18 +182,12 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
       return;
     }
 
-    super.activateOptions();
-
     try {
-      validateOptionsAndInit();
+      activateOptionsHelper(true);
     } catch (Exception ex) {
       logError("Failed to activate appender.", ex);
       closed = true;
-      return;
     }
-
-    activated = true;
-    Runtime.getRuntime().addShutdownHook(new Thread(this::close));
   }
 
   // Overridden methods
@@ -271,6 +260,25 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
   }
 
   // Private methods
+  /**
+   * Helper method to activate options.
+   * @param enableShutdownHook Whether to enable a shutdown hook to close the
+   * appender.
+   * @throws IOException on I/O error
+   */
+  private void activateOptionsHelper (boolean enableShutdownHook) throws IOException {
+    super.activateOptions();
+
+    validateOptionsAndInit();
+
+    activated = true;
+    if (enableShutdownHook) {
+      // Log4j may not attempt to close the appender when the JVM shuts down, so
+      // this hook ensures we try to close the appender before shutdown.
+      Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+    }
+  }
+
   /**
    * Validates the appender's settings (e.g., compression level) and initializes
    * the appender with them.
