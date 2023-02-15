@@ -7,8 +7,19 @@ This package contains useful Log4j appenders. Currently, it contains:
   achieve higher compression than general-purpose compressors while the logs
   are being generated.
 
+* `AbstractBufferedRollingFileAppender` - An abstract class which enforces an
+  opinionated workflow, skeleton interfaces and hooks optimized towards
+  buffered rolling file appender implementations with remote persistent
+  storage. In addition, the abstract class implements verbosity-aware
+  hard+soft timeout based log freshness policy.
+
+* `AbstractClpirBufferedRollingFileAppender` - Provides size-based file
+  rollover, log freshness guarantee and streaming compression offered in
+  `ClpIrFileAppender`. 
+
 # Usage
 
+## `ClpIrFileAppender`
 1. Add the package and its dependencies to the `dependencies` section of your 
    your `pom.xml`:
 
@@ -65,6 +76,10 @@ This package contains useful Log4j appenders. Currently, it contains:
     # but will slow down compression. Valid compression levels are 1-19.
     log4j.appender.clpir.compressionLevel=3
    ```
+   
+## `AbstractClpIrBufferedRollingFileAppender`
+To use class, we expect user to implement at minimum the `sync()` method to
+perform file upload to remote persistent store.
 
 # Providing Feedback
 
