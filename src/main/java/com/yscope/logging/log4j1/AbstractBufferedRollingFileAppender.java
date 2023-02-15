@@ -51,21 +51,19 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     // Default flush timeout values optimized high latency remote
     // persistent storage such as object store or HDFS are provided
     hardFlushTimeout.put(Level.OFF, Long.MAX_VALUE);
-    hardFlushTimeout.put(Level.FATAL, (long) (5 * 60 * 1000));
-    hardFlushTimeout.put(Level.ERROR, (long) (5 * 60 * 1000));
-    hardFlushTimeout.put(Level.WARN, (long) (10 * 60 * 1000));
-    hardFlushTimeout.put(Level.INFO, (long) (30 * 60 * 1000));
-    hardFlushTimeout.put(Level.DEBUG, (long) (30 * 60 * 1000));
-    hardFlushTimeout.put(Level.TRACE, (long) (30 * 60 * 1000));
-    hardFlushTimeout.put(Level.ALL, (long) (30 * 60 * 1000));
-    softFlushTimeout.put(Level.OFF, Long.MAX_VALUE);
-    softFlushTimeout.put(Level.FATAL, (long) (5 * 1000));
-    softFlushTimeout.put(Level.ERROR, (long) (10 * 1000));
-    softFlushTimeout.put(Level.WARN, (long) (15 * 1000));
-    softFlushTimeout.put(Level.INFO, (long) (3 * 60 * 1000));
-    softFlushTimeout.put(Level.DEBUG, (long) (3 * 60 * 1000));
-    softFlushTimeout.put(Level.TRACE, (long) (3 * 60 * 1000));
-    softFlushTimeout.put(Level.ALL, (long) (3 * 60 * 1000));
+    hardFlushTimeout.put(Level.FATAL, 5L * 60 * 1000 /* 5 min */);
+    hardFlushTimeout.put(Level.ERROR, 5L * 60 * 1000 /* 5 min */);
+    hardFlushTimeout.put(Level.WARN, 10L * 60 * 1000 /* 10 min */);
+    hardFlushTimeout.put(Level.INFO, 30L * 60 * 1000 /* 30 min */);
+    hardFlushTimeout.put(Level.DEBUG, 30L * 60 * 1000 /* 30 min */);
+    hardFlushTimeout.put(Level.TRACE, 30L * 60 * 1000 /* 30 min */);
+
+    softFlushTimeout.put(Level.FATAL, 5L * 1000 /* 5 sec */);
+    softFlushTimeout.put(Level.ERROR, 10L * 1000 /* 10 sec */);
+    softFlushTimeout.put(Level.WARN, 15L * 1000 /* 15 sec */);
+    softFlushTimeout.put(Level.INFO, 3L * 60 * 1000 /* 3 min */);
+    softFlushTimeout.put(Level.DEBUG, 3L * 60 * 1000 /* 3 min */);
+    softFlushTimeout.put(Level.TRACE, 3L * 60 * 1000 /* 3 min */);
   }
 
   /**
@@ -73,7 +71,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * request as well as a shutdown request to terminate background executor
    * thread responsible for flushing and synchronization. Note that similar to
    * {@code append()}, this method is also intentionally made to be final to
-   * ensure it is not over-ridden by derived class. To allow for user-defined
+   * ensure it is not overridden by derived class. To allow for user-defined
    * behaviors, user should override the following hook method:
    * {@code closeBufferedAppender()}, {@code sync()}, etc
    */
@@ -122,7 +120,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   /**
    * Append method is an opinionated sequence of steps involved in a file
    * rollover operation. This method is intentionally made to be final to ensure
-   * it is not over-ridden by derived class. To allow for user-defined
+   * it is not overridden by derived class. To allow for user-defined
    * behaviours, user should override the following hook methods:
    * {@code appendBufferedFile}, {@code rollOverRequired},
    * {@code resetFreshnessParameters()}, {@code updateLogFilePath()},
@@ -178,7 +176,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   /**
    * Method invoked by log4j library via reflection or manually by the user to
    * disable (default enable) the closing of files upon receiving a shutdown
-   * signal prior to JVM exit. This is a rarely used bu useful functionality
+   * signal prior to JVM exit. This is a rarely used but useful functionality
    * when user wants to capture as much log events as possible after a shutdown
    * signal is received at the risk of data loss.
    * @param closeFileOnShutdown
@@ -217,7 +215,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * The implementation shall determine the conditions to trigger rollover
-   * @return true to trigger rollover, false otherwise
+   * @return Whether to trigger rollover
    */
   protected abstract boolean rolloverRequired ();
 
@@ -294,7 +292,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * ensure flush does not have data race with append operations.
    * Synchronization after the flush is also processed in the background as to
    * ensure actual log append operation is unblocked as soon as possible.
-   * @throws IOException
+   * @throws IOException on I/O error
    */
   protected synchronized void ensureLogFreshness () throws IOException {
     long ts = System.currentTimeMillis();
@@ -329,7 +327,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
           logError("Failed to flush buffered appender in the background", e);
         } catch (InterruptedException e) {
           if (closeFileOnShutdown) {
-            logDebug("Received interrupt message for " + "graceful shutdown of "
+            logDebug("Received interrupt message for graceful shutdown of "
                          + "BackgroundFlushThread");
             break;
           }
@@ -347,25 +345,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     private final LinkedBlockingQueue<BackgroundSyncRequest> backgroundSyncRequests =
         new LinkedBlockingQueue<>();
 
-    public void submitShutdownRequest () {
-      logDebug("Injecting graceful shutdown poison message into background thread queue");
-      BackgroundSyncRequest shutdownRequest = new ShutdownPoisonRequest();
-      while (true) {
-        if (backgroundSyncRequests.offer(shutdownRequest)) {
-          break;
-        }
-      }
-    }
-
-    public void submitSyncRequest (String path, boolean deleteFile) {
-      BackgroundSyncRequest syncRequest = new SyncSyncRequest(path, deleteFile);
-      while (true) {
-        if (backgroundSyncRequests.offer(syncRequest)) {
-          break;
-        }
-      }
-    }
-
     @Override
     public void run () {
       while (true) {
@@ -382,6 +361,25 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
           }
         } catch (InterruptedException e) {
           throw new RuntimeException(e);
+        }
+      }
+    }
+
+    public void submitShutdownRequest () {
+      logDebug("Injecting graceful shutdown poison message into background thread queue");
+      BackgroundSyncRequest shutdownRequest = new ShutdownPoisonRequest();
+      while (true) {
+        if (backgroundSyncRequests.offer(shutdownRequest)) {
+          break;
+        }
+      }
+    }
+
+    public void submitSyncRequest (String path, boolean deleteFile) {
+      BackgroundSyncRequest syncRequest = new SyncSyncRequest(path, deleteFile);
+      while (true) {
+        if (backgroundSyncRequests.offer(syncRequest)) {
+          break;
         }
       }
     }
