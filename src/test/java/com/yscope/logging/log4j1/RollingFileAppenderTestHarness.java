@@ -4,6 +4,14 @@ public class RollingFileAppenderTestHarness extends AbstractClpIrBufferedRolling
   private int numSyncEvent = 0;
   private int numSyncAndCloseEvent = 0;
 
+  public synchronized int getNumSyncAndCloseEvent () {
+    return numSyncAndCloseEvent;
+  }
+
+  public synchronized int getNumSyncEvent () {
+    return numSyncEvent;
+  }
+
   /**
    * We hook onto the sync function to record flush and close events
    * @param path of log file on the local file system
@@ -16,13 +24,5 @@ public class RollingFileAppenderTestHarness extends AbstractClpIrBufferedRolling
     } else {
       numSyncEvent += 1;
     }
-  }
-
-  public synchronized int getNumSyncAndCloseEvent () {
-    return numSyncAndCloseEvent;
-  }
-
-  public synchronized int getNumSyncEvent () {
-    return numSyncEvent;
   }
 }

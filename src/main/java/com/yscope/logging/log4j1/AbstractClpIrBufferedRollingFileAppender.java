@@ -10,7 +10,15 @@ import java.io.IOException;
  * functionality
  */
 public abstract class AbstractClpIrBufferedRollingFileAppender
-    extends AbstractBufferedRollingFileAppender {
+    extends AbstractBufferedRollingFileAppender
+{
+  public static final String CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION = ".clp.zst";
+
+  protected String baseName;
+  protected ClpIrFileAppender clpIrFileAppender = null;
+  protected String currentFileName;
+  protected String outputDir;
+
   // File size based rollover strategy for streaming compressed logging is
   // governed by both the compressed on-disk size and the size of raw
   // uncompressed content. The former is to ensure a reasonable local and/or
@@ -30,12 +38,26 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   private boolean closeFrameOnFlush = true;
   private boolean useCompactEncoding = false;
 
-  protected String baseName;
-  protected ClpIrFileAppender clpIrFileAppender = null;
-  protected String currentFileName;
-  protected String outputDir;
+  @Override
+  public void activateOptions () {
+    super.activateOptions();
+    try {
+      clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useCompactEncoding,
+                                                closeFrameOnFlush, compressionLevel);
+    } catch (IOException e) {
+      logError("Failed to activate appender", e);
+    }
+  }
 
-  public static final String CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION = ".clp.zst";
+  @Override
+  public void appendBufferedFile (LoggingEvent loggingEvent) {
+    clpIrFileAppender.append(loggingEvent);
+  }
+
+  @Override
+  public void flush () throws IOException {
+    clpIrFileAppender.flush();
+  }
 
   public void setCompressedRolloverSize (long compressedRolloverSize) {
     this.compressedRolloverSize = compressedRolloverSize;
@@ -70,22 +92,6 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  public void activateOptions () {
-    super.activateOptions();
-    try {
-      clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useCompactEncoding,
-                                                closeFrameOnFlush, compressionLevel);
-    } catch (IOException e) {
-      logError("Failed to activate appender", e);
-    }
-  }
-
-  @Override
-  public void appendBufferedFile (LoggingEvent loggingEvent) {
-    clpIrFileAppender.append(loggingEvent);
-  }
-
-  @Override
   protected boolean rolloverRequired () {
     return getCompressedSize() > compressedRolloverSize
         || getUncompressedSize() > uncompressedRolloverSize;
@@ -94,11 +100,6 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   @Override
   protected void closeBufferedAppender () {
     clpIrFileAppender.close();
-  }
-
-  protected void updateLogFileName () {
-    currentFileName = baseName + "." + lastRolloverTimestamp
-        + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION;
   }
 
   @Override
@@ -118,8 +119,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     }
   }
 
-  @Override
-  public void flush () throws IOException {
-    clpIrFileAppender.flush();
+  protected void updateLogFileName () {
+    currentFileName = baseName + "." + lastRolloverTimestamp
+        + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION;
   }
 }

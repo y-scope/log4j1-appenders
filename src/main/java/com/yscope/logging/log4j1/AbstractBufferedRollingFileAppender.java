@@ -23,14 +23,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppenderSkeleton
     implements Flushable
 {
-  // Hard and soft timeouts are leveraged to opportunistically flush the
-  // output buffer. Hard timeout triggers a delayed buffer flush after a log
-  // event has been observed. Soft timeout also triggers a delayed buffer
-  // flush. However, before the soft timeout is triggered, it is extended if
-  // a new log event is observed. After either hard or soft deadline is
-  // triggered, the timeouts are reset until it is triggered again.
-  private final HashMap<Level, Long> hardFlushTimeout = new HashMap<>();
-  private final HashMap<Level, Long> softFlushTimeout = new HashMap<>();
   protected long hardFlushTimeoutEpoch;
   protected long softFlushTimeoutCap;
   protected long softFlushTimeoutEpoch;
@@ -45,6 +37,15 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   protected String currentLogPath = null;
   protected long lastRolloverTimestamp = System.currentTimeMillis();
+
+  // Hard and soft timeouts are leveraged to opportunistically flush the
+  // output buffer. Hard timeout triggers a delayed buffer flush after a log
+  // event has been observed. Soft timeout also triggers a delayed buffer
+  // flush. However, before the soft timeout is triggered, it is extended if
+  // a new log event is observed. After either hard or soft deadline is
+  // triggered, the timeouts are reset until it is triggered again.
+  private final HashMap<Level, Long> hardFlushTimeout = new HashMap<>();
+  private final HashMap<Level, Long> softFlushTimeout = new HashMap<>();
 
   public AbstractBufferedRollingFileAppender () {
     // Default flush timeout values optimized high latency remote
@@ -65,6 +66,87 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     softFlushTimeout.put(Level.DEBUG, (long) (3 * 60 * 1000));
     softFlushTimeout.put(Level.TRACE, (long) (3 * 60 * 1000));
     softFlushTimeout.put(Level.ALL, (long) (3 * 60 * 1000));
+  }
+
+  /**
+   * Closing the appender involves closing the buffered log file, submit sync
+   * request as well as a shutdown request to terminate background executor
+   * thread responsible for flushing and synchronization. Note that similar to
+   * {@code append()}, this method is also intentionally made to be final to
+   * ensure it is not over-ridden by derived class. To allow for user-defined
+   * behaviors, user should override the following hook method:
+   * {@code closeBufferedAppender()}, {@code sync()}, etc
+   */
+  @Override
+  public final void close () {
+    if (closeFileOnShutdown) {
+      closeBufferedAppender();
+      backgroundSyncThread.submitSyncRequest(currentLogPath, true);
+      backgroundSyncThread.submitShutdownRequest();
+    } else {
+      try {
+        // If closeFileOnShutdown, we flush + sync instead.
+        // Since log appender is still running, further log append is
+        // possible and tighter freshness policy is used to increase
+        // log upload reliability after close.
+        flush();
+      } catch (IOException e) {
+        logError("Failed to flush", e);
+      }
+      backgroundSyncThread.submitSyncRequest(currentLogPath, false);
+    }
+  }
+
+  /**
+   * Allows log4j or derived classes to activate the options in this class. In
+   * addition, this method also starts two background threads used to
+   * asynchronously flush output buffer to file and synchronize them to remote
+   * persistent storage. A shutdown hook is installed to gracefully shut down
+   * the appender if {@code closeFileOnShutdown} is {@code true}. Otherwise, the
+   * appender will keep on appending logs until JVM exit and make the best
+   * effort to upload logs. User will accept the risk higher chance of
+   * data-loss, but gains the chance to capture logs after shutdown hook is
+   * invoked.
+   */
+  @Override
+  public void activateOptions () {
+    resetFreshnessParameters();
+    updateLogFilePath();
+    if (closeFileOnShutdown) {
+      Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+    }
+    backgroundFlushThread.start();
+    backgroundSyncThread.start();
+  }
+
+  /**
+   * Append method is an opinionated sequence of steps involved in a file
+   * rollover operation. This method is intentionally made to be final to ensure
+   * it is not over-ridden by derived class. To allow for user-defined
+   * behaviours, user should override the following hook methods:
+   * {@code appendBufferedFile}, {@code rollOverRequired},
+   * {@code resetFreshnessParameters()}, {@code updateLogFilePath()},
+   * {@code startNewBufferedFile()}, etc
+   * @param loggingEvent
+   */
+  @Override
+  public final synchronized void append (LoggingEvent loggingEvent) {
+    appendBufferedFile(loggingEvent);
+
+    if (rolloverRequired()) {
+      resetRolloverParameters(loggingEvent);
+      resetFreshnessParameters();
+      backgroundSyncThread.submitSyncRequest(currentLogPath, true);
+      updateLogFilePath();
+      startNewBufferedFile();
+    } else {
+      updateFreshnessParameters(loggingEvent);
+    }
+  }
+
+  @Override
+  public boolean requiresLayout () {
+    return true;
   }
 
   /**
@@ -134,28 +216,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Allows log4j or derived classes to activate the options in this class. In
-   * addition, this method also starts two background threads used to
-   * asynchronously flush output buffer to file and synchronize them to remote
-   * persistent storage. A shutdown hook is installed to gracefully shut down
-   * the appender if {@code closeFileOnShutdown} is {@code true}. Otherwise, the
-   * appender will keep on appending logs until JVM exit and make the best
-   * effort to upload logs. User will accept the risk higher chance of
-   * data-loss, but gains the chance to capture logs after shutdown hook is
-   * invoked.
-   */
-  @Override
-  public void activateOptions () {
-    resetFreshnessParameters();
-    updateLogFilePath();
-    if (closeFileOnShutdown) {
-      Runtime.getRuntime().addShutdownHook(new Thread(this::close));
-    }
-    backgroundFlushThread.start();
-    backgroundSyncThread.start();
-  }
-
-  /**
    * The implementation shall determine the conditions to trigger rollover
    * @return true to trigger rollover, false otherwise
    */
@@ -186,6 +246,16 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * The implementation shall close the underlying buffered appender
    */
   protected abstract void closeBufferedAppender ();
+
+  /**
+   * The implementation of this abstract sync method shall fulfill the duty of
+   * managing on-disk and/or remote log file life-cycles. For example: upload
+   * files to remote storage while retaining 3 most recently used log files on
+   * local on-disk storage.
+   * @param path of log file on the local file system
+   * @param deleteFile whenever the implementation sees fit
+   */
+  protected abstract void sync (String path, boolean deleteFile);
 
   /**
    * Reset freshness parameter means increasing the deadline to infinity. Only
@@ -242,74 +312,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   protected void resetRolloverParameters (LoggingEvent loggingEvent) {
     lastRolloverTimestamp = loggingEvent.timeStamp;
-  }
-
-  /**
-   * Append method is an opinionated sequence of steps involved in a file
-   * rollover operation. This method is intentionally made to be final to ensure
-   * it is not over-ridden by derived class. To allow for user-defined
-   * behaviours, user should override the following hook methods:
-   * {@code appendBufferedFile}, {@code rollOverRequired},
-   * {@code resetFreshnessParameters()}, {@code updateLogFilePath()},
-   * {@code startNewBufferedFile()}, etc
-   * @param loggingEvent
-   */
-  public final synchronized void append (LoggingEvent loggingEvent) {
-    appendBufferedFile(loggingEvent);
-
-    if (rolloverRequired()) {
-      resetRolloverParameters(loggingEvent);
-      resetFreshnessParameters();
-      backgroundSyncThread.submitSyncRequest(currentLogPath, true);
-      updateLogFilePath();
-      startNewBufferedFile();
-    } else {
-      updateFreshnessParameters(loggingEvent);
-    }
-  }
-
-  /**
-   * The implementation of this abstract sync method shall fulfill the duty of
-   * managing on-disk and/or remote log file life-cycles. For example: upload
-   * files to remote storage while retaining 3 most recently used log files on
-   * local on-disk storage.
-   * @param path of log file on the local file system
-   * @param deleteFile whenever the implementation sees fit
-   */
-  protected abstract void sync (String path, boolean deleteFile);
-
-  /**
-   * Closing the appender involves closing the buffered log file, submit sync
-   * request as well as a shutdown request to terminate background executor
-   * thread responsible for flushing and synchronization. Note that similar to
-   * {@code append()}, this method is also intentionally made to be final to
-   * ensure it is not over-ridden by derived class. To allow for user-defined
-   * behaviors, user should override the following hook method:
-   * {@code closeBufferedAppender()}, {@code sync()}, etc
-   */
-  @Override
-  public final void close () {
-    if (closeFileOnShutdown) {
-      closeBufferedAppender();
-      backgroundSyncThread.submitSyncRequest(currentLogPath, true);
-      backgroundSyncThread.submitShutdownRequest();
-    } else {
-      try {
-        // If closeFileOnShutdown, we flush + sync instead.
-        // Since log appender is still running, further log append is
-        // possible and tighter freshness policy is used to increase
-        // log upload reliability after close.
-        flush();
-      } catch (IOException e) {
-        logError("Failed to flush", e);
-      }
-      backgroundSyncThread.submitSyncRequest(currentLogPath, false);
-    }
-  }
-
-  @Override
-  public boolean requiresLayout () {
-    return true;
   }
 
   /**
