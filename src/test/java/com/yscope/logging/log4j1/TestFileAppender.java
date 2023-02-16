@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-public class TestAppender {
+public class TestClpIrFileAppender {
   private final String patternLayoutString = "%d{yy/MM/dd HH:mm:ss} %p %c{1}: %m%n";
   private final PatternLayout patternLayout = new PatternLayout(patternLayoutString);
   private final int compressionLevel = 3;
@@ -58,7 +58,6 @@ public class TestAppender {
                                                     false, Integer.MAX_VALUE));
 
     // Validate different file paths
-    ClpIrFileAppender clpIrFileAppender;
     try {
       testEmptyCreation(Paths.get(fileName), patternLayout, useFourByteEncoding);
       testEmptyCreation(Paths.get("a", "b", fileName), patternLayout, useFourByteEncoding);
@@ -165,7 +164,7 @@ public class TestAppender {
     //  should all be verified by a decoding the stream and comparing it with
     //  the output of an uncompressed file appender.
 
-    Logger logger = Logger.getLogger(TestAppender.class);
+    Logger logger = Logger.getLogger(TestClpIrFileAppender.class);
     String message = "Static text, dictVar1, 123, 456.7, dictVar2, 987, 654.3";
 
     ClpIrFileAppender clpIrFileAppender = new ClpIrFileAppender(fileName, patternLayout,
