@@ -342,22 +342,20 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * {@code AbstractBufferedRollingFileAppender.sync()}.
    */
   private class BackgroundSyncThread extends Thread {
-    private final LinkedBlockingQueue<BackgroundSyncRequest> backgroundSyncRequests =
-        new LinkedBlockingQueue<>();
+    private final LinkedBlockingQueue<Request> requests = new LinkedBlockingQueue<>();
 
     @Override
     public void run () {
       while (true) {
         try {
-          BackgroundSyncRequest request = backgroundSyncRequests.take();
-          if (request instanceof SyncSyncRequest) {
-            SyncSyncRequest syncRequest = (SyncSyncRequest)request;
+          Request request = requests.take();
+          if (request instanceof SyncRequest) {
+            SyncRequest syncRequest = (SyncRequest)request;
             sync(syncRequest.path, syncRequest.deleteFile);
-          } else if (request instanceof ShutdownPoisonRequest) {
+          } else if (request instanceof ShutdownRequest) {
             // Gracefully shutdown after receiving a shutdown poison request
-            logDebug("Received shutdown poison request to trigger "
-                         + "graceful shutdown of BackgroundSyncThread");
-            return;
+            logDebug("Received shutdown request");
+            break;
           }
         } catch (InterruptedException e) {
           throw new RuntimeException(e);
@@ -366,33 +364,33 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     }
 
     public void submitShutdownRequest () {
-      logDebug("Injecting graceful shutdown poison message into background thread queue");
-      BackgroundSyncRequest shutdownRequest = new ShutdownPoisonRequest();
+      logDebug("Submitting shutdown request");
+      Request shutdownRequest = new ShutdownRequest();
       while (true) {
-        if (backgroundSyncRequests.offer(shutdownRequest)) {
+        if (requests.offer(shutdownRequest)) {
           break;
         }
       }
     }
 
     public void submitSyncRequest (String path, boolean deleteFile) {
-      BackgroundSyncRequest syncRequest = new SyncSyncRequest(path, deleteFile);
+      Request syncRequest = new SyncRequest(path, deleteFile);
       while (true) {
-        if (backgroundSyncRequests.offer(syncRequest)) {
+        if (requests.offer(syncRequest)) {
           break;
         }
       }
     }
 
-    private class BackgroundSyncRequest {}
+    private class Request {}
 
-    private class ShutdownPoisonRequest extends BackgroundSyncRequest {}
+    private class ShutdownRequest extends Request {}
 
-    private class SyncSyncRequest extends BackgroundSyncRequest {
+    private class SyncRequest extends Request {
       public String path;
       public boolean deleteFile;
 
-      public SyncSyncRequest (String path, boolean deleteFile) {
+      public SyncRequest (String path, boolean deleteFile) {
         this.path = path;
         this.deleteFile = deleteFile;
       }
