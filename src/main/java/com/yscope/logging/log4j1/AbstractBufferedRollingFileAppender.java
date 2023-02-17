@@ -337,49 +337,40 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * The background synchronization thread performs background buffer
-   * synchronization. To customize the execution thread's behavior, override
-   * {@code AbstractBufferedRollingFileAppender.sync()}.
+   * This thread calls {@code AbstractBufferedRollingFileAppender.sync()} in
+   * response to synchronization requests. Derived classes should implement
+   * {@code sync()} according to their synchronization needs.
    */
   private class BackgroundSyncThread extends Thread {
     private final LinkedBlockingQueue<Request> requests = new LinkedBlockingQueue<>();
 
     @Override
     public void run () {
-      while (true) {
-        try {
+      try {
+        while (true) {
           Request request = requests.take();
           if (request instanceof SyncRequest) {
             SyncRequest syncRequest = (SyncRequest)request;
             sync(syncRequest.path, syncRequest.deleteFile);
           } else if (request instanceof ShutdownRequest) {
-            // Gracefully shutdown after receiving a shutdown poison request
             logDebug("Received shutdown request");
             break;
           }
-        } catch (InterruptedException e) {
-          throw new RuntimeException(e);
         }
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
       }
     }
 
     public void submitShutdownRequest () {
       logDebug("Submitting shutdown request");
       Request shutdownRequest = new ShutdownRequest();
-      while (true) {
-        if (requests.offer(shutdownRequest)) {
-          break;
-        }
-      }
+      while (false == requests.offer(shutdownRequest)) {}
     }
 
     public void submitSyncRequest (String path, boolean deleteFile) {
       Request syncRequest = new SyncRequest(path, deleteFile);
-      while (true) {
-        if (requests.offer(syncRequest)) {
-          break;
-        }
-      }
+      while (false == requests.offer(syncRequest)) {}
     }
 
     private class Request {}
