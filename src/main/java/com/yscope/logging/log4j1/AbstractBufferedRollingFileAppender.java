@@ -23,16 +23,16 @@ import java.util.concurrent.LinkedBlockingQueue;
 public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppenderSkeleton
     implements Flushable
 {
-  protected long hardFlushTimeoutEpoch;
-  protected long softFlushTimeoutCap;
-  protected long softFlushTimeoutEpoch;
+  protected long flushHardTimeoutTimestamp;
+  protected long flushSoftTimeoutTimestamp;
+  protected long flushMaximumSoftTimeout;
 
   // Background flush thread is used to enforce log freshness policy even if
   // no new log events are observed. Background sync thread is used to
   // asynchronously push changes
   protected BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
   protected BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
-  protected int backgroundSyncSleepTimeMs = 1000;
+  protected int backgroundSyncSleepTimeMillis = 1000;
   protected boolean closeFileOnShutdown = true;
 
   protected String currentLogPath = null;
@@ -44,26 +44,26 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   // flush. However, before the soft timeout is triggered, it is extended if
   // a new log event is observed. After either hard or soft deadline is
   // triggered, the timeouts are reset until it is triggered again.
-  private final HashMap<Level, Long> hardFlushTimeout = new HashMap<>();
-  private final HashMap<Level, Long> softFlushTimeout = new HashMap<>();
+  private final HashMap<Level, Long> flushHardTimeoutPerLevel = new HashMap<>();
+  private final HashMap<Level, Long> flushSoftTimeoutPerLevel = new HashMap<>();
 
   public AbstractBufferedRollingFileAppender () {
     // Default flush timeout values optimized high latency remote
     // persistent storage such as object store or HDFS are provided
-    hardFlushTimeout.put(Level.OFF, Long.MAX_VALUE);
-    hardFlushTimeout.put(Level.FATAL, 5L * 60 * 1000 /* 5 min */);
-    hardFlushTimeout.put(Level.ERROR, 5L * 60 * 1000 /* 5 min */);
-    hardFlushTimeout.put(Level.WARN, 10L * 60 * 1000 /* 10 min */);
-    hardFlushTimeout.put(Level.INFO, 30L * 60 * 1000 /* 30 min */);
-    hardFlushTimeout.put(Level.DEBUG, 30L * 60 * 1000 /* 30 min */);
-    hardFlushTimeout.put(Level.TRACE, 30L * 60 * 1000 /* 30 min */);
+    flushHardTimeoutPerLevel.put(Level.OFF, Long.MAX_VALUE);
+    flushHardTimeoutPerLevel.put(Level.FATAL, 5L * 60 * 1000 /* 5 min */);
+    flushHardTimeoutPerLevel.put(Level.ERROR, 5L * 60 * 1000 /* 5 min */);
+    flushHardTimeoutPerLevel.put(Level.WARN, 10L * 60 * 1000 /* 10 min */);
+    flushHardTimeoutPerLevel.put(Level.INFO, 30L * 60 * 1000 /* 30 min */);
+    flushHardTimeoutPerLevel.put(Level.DEBUG, 30L * 60 * 1000 /* 30 min */);
+    flushHardTimeoutPerLevel.put(Level.TRACE, 30L * 60 * 1000 /* 30 min */);
 
-    softFlushTimeout.put(Level.FATAL, 5L * 1000 /* 5 sec */);
-    softFlushTimeout.put(Level.ERROR, 10L * 1000 /* 10 sec */);
-    softFlushTimeout.put(Level.WARN, 15L * 1000 /* 15 sec */);
-    softFlushTimeout.put(Level.INFO, 3L * 60 * 1000 /* 3 min */);
-    softFlushTimeout.put(Level.DEBUG, 3L * 60 * 1000 /* 3 min */);
-    softFlushTimeout.put(Level.TRACE, 3L * 60 * 1000 /* 3 min */);
+    flushSoftTimeoutPerLevel.put(Level.FATAL, 5L * 1000 /* 5 sec */);
+    flushSoftTimeoutPerLevel.put(Level.ERROR, 10L * 1000 /* 10 sec */);
+    flushSoftTimeoutPerLevel.put(Level.WARN, 15L * 1000 /* 15 sec */);
+    flushSoftTimeoutPerLevel.put(Level.INFO, 3L * 60 * 1000 /* 3 min */);
+    flushSoftTimeoutPerLevel.put(Level.DEBUG, 3L * 60 * 1000 /* 3 min */);
+    flushSoftTimeoutPerLevel.put(Level.TRACE, 3L * 60 * 1000 /* 3 min */);
   }
 
   /**
@@ -156,7 +156,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   public void setHardFlushTimeoutMinutes (String parameters) {
     for (String token : parameters.split(",")) {
       String[] kv = token.split("=");
-      hardFlushTimeout.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 60 * 1000);
+      flushHardTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 60 * 1000);
     }
   }
 
@@ -169,7 +169,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   public void setSoftFlushTimeoutSeconds (String parameters) {
     for (String token : parameters.split(",")) {
       String[] kv = token.split("=");
-      softFlushTimeout.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 1000);
+      flushSoftTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 1000);
     }
   }
 
@@ -189,28 +189,28 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * Method invoked by log4j library via reflection or manually by the user to
    * adjust the amount of time which the background sync thread sleeps between
    * work iterations
-   * @param backgroundSyncSleepTimeMs
+   * @param milliseconds
    */
-  public void setBackgroundSyncSleepTimeMs (int backgroundSyncSleepTimeMs) {
-    this.backgroundSyncSleepTimeMs = backgroundSyncSleepTimeMs;
+  public void setBackgroundSyncSleepTimeMillis (int milliseconds) {
+    this.backgroundSyncSleepTimeMillis = milliseconds;
   }
 
   /**
    * In some cases, such as unit testing, we want to explicitly set the deadline
    * parameters to precisely control flushing behavior
-   * @param epochMs
+   * @param timestamp Timestamp as milliseconds since the UNIX epoch
    */
-  public void setHardFlushTimeoutEpoch (long epochMs) {
-    hardFlushTimeoutEpoch = epochMs;
+  public void setFlushHardTimeoutTimestamp (long timestamp) {
+    flushHardTimeoutTimestamp = timestamp;
   }
 
   /**
    * In some cases, such as unit testing, we want to explicitly set the deadline
    * parameters to precisely control flushing behavior
-   * @param epochMs
+   * @param timestamp Timestmp as milliseconds since the UNIX epoch
    */
-  public void setSoftFlushTimeoutEpoch (long epochMs) {
-    softFlushTimeoutEpoch = epochMs;
+  public void setFlushSoftTimeoutTimestamp (long timestamp) {
+    flushSoftTimeoutTimestamp = timestamp;
   }
 
   /**
@@ -260,14 +260,14 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * when a new log message is appended will the deadline be updated.
    */
   protected void resetFreshnessParameters () {
-    hardFlushTimeoutEpoch = Long.MAX_VALUE;
-    softFlushTimeoutEpoch = Long.MAX_VALUE;
+    flushHardTimeoutTimestamp = Long.MAX_VALUE;
+    flushSoftTimeoutTimestamp = Long.MAX_VALUE;
     if (Thread.currentThread().isInterrupted()) {
       // Soft cap is lowered to minimum after thread is interrupted to
       // increase reliability of log upload
-      softFlushTimeoutCap = softFlushTimeout.get(Level.FATAL);
+      flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.FATAL);
     } else {
-      softFlushTimeoutCap = softFlushTimeout.get(Level.INFO);
+      flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.INFO);
     }
   }
 
@@ -278,10 +278,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   protected void updateFreshnessParameters (LoggingEvent loggingEvent) {
     Level level = loggingEvent.getLevel();
-    hardFlushTimeoutEpoch = Math.min(hardFlushTimeoutEpoch,
-                                     loggingEvent.timeStamp + hardFlushTimeout.get(level));
-    softFlushTimeoutCap = Math.min(softFlushTimeoutCap, softFlushTimeout.get(level));
-    softFlushTimeoutEpoch = Math.min(softFlushTimeoutEpoch, softFlushTimeoutCap);
+    flushHardTimeoutTimestamp = Math.min(flushHardTimeoutTimestamp,
+                                         loggingEvent.timeStamp + flushHardTimeoutPerLevel.get(level));
+    flushMaximumSoftTimeout = Math.min(flushMaximumSoftTimeout,
+                                       flushSoftTimeoutPerLevel.get(level));
+    flushSoftTimeoutTimestamp = Math.min(flushSoftTimeoutTimestamp, flushMaximumSoftTimeout);
   }
 
   /**
@@ -296,7 +297,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   protected synchronized void ensureLogFreshness () throws IOException {
     long ts = System.currentTimeMillis();
-    if (ts > softFlushTimeoutEpoch || ts > hardFlushTimeoutEpoch) {
+    if (ts > flushSoftTimeoutTimestamp || ts > flushHardTimeoutTimestamp) {
       flush();
       backgroundSyncThread.submitSyncRequest(currentLogPath, false);
       resetFreshnessParameters();
@@ -322,7 +323,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       while (true) {
         try {
           ensureLogFreshness();
-          sleep(backgroundSyncSleepTimeMs);
+          sleep(backgroundSyncSleepTimeMillis);
         } catch (IOException e) {
           logError("Failed to flush buffered appender in the background", e);
         } catch (InterruptedException e) {
