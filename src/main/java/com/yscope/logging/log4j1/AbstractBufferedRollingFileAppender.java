@@ -278,11 +278,13 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   protected void updateFreshnessParameters (LoggingEvent loggingEvent) {
     Level level = loggingEvent.getLevel();
-    flushHardTimeoutTimestamp = Math.min(flushHardTimeoutTimestamp,
-                                         loggingEvent.timeStamp + flushHardTimeoutPerLevel.get(level));
+    long timeoutTimestamp = loggingEvent.timeStamp + flushHardTimeoutPerLevel.get(level);
+    flushHardTimeoutTimestamp = Math.min(flushHardTimeoutTimestamp, timeoutTimestamp);
+
     flushMaximumSoftTimeout = Math.min(flushMaximumSoftTimeout,
                                        flushSoftTimeoutPerLevel.get(level));
-    flushSoftTimeoutTimestamp = Math.min(flushSoftTimeoutTimestamp, flushMaximumSoftTimeout);
+    timeoutTimestamp = loggingEvent.timeStamp + flushMaximumSoftTimeout;
+    flushSoftTimeoutTimestamp = Math.min(flushSoftTimeoutTimestamp, timeoutTimestamp);
   }
 
   /**
