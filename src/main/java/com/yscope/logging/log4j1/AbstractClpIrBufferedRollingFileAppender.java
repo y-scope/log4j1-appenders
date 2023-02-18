@@ -110,7 +110,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   @Override
   protected void startNewBufferedFile () {
     try {
-      rolloverCompressedSizeThreshold += clpIrFileAppender.getCompressedSize();
+      compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
       uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
       clpIrFileAppender.startNewFile(currentLogPath);
     } catch (IOException e) {
