@@ -349,8 +349,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
     @Override
     public void run () {
-      try {
-        while (true) {
+      while (true) {
+        try {
           Request request = requests.take();
           if (request instanceof SyncRequest) {
             SyncRequest syncRequest = (SyncRequest)request;
@@ -359,9 +359,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
             logDebug("Received shutdown request");
             break;
           }
+        } catch (InterruptedException e) {
+          // Ignore the exception since we want to continue syncing logs even
+          // in case of exceptions (the thread only shuts down when a shutdown
+          // request is made)
         }
-      } catch (InterruptedException e) {
-        throw new RuntimeException(e);
       }
     }
 
