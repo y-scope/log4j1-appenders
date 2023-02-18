@@ -85,7 +85,7 @@ public class TestRollingFileLogAppender {
     // Append a log event then explicitly set hard deadline epoch to the past.
     // The background flusher shall flush the log event asychronously shortly
     appendLogEvent(clpIrRollingLocalFileAppender);
-    clpIrRollingLocalFileAppender.setHardFlushTimeoutEpoch(System.currentTimeMillis() - 999);
+    clpIrRollingLocalFileAppender.setFlushHardTimeoutTimestamp(System.currentTimeMillis() - 999);
     checkNumSyncEvent(clpIrRollingLocalFileAppender, 1, 1000);
     checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 0, 1000);
 
@@ -107,14 +107,14 @@ public class TestRollingFileLogAppender {
         generateTestAppender(99999999, 99999999);
 
     // Hard deadline should be in distant future
-    clpIrRollingLocalFileAppender.setHardFlushTimeoutEpoch(System.currentTimeMillis() + 99999999);
+    clpIrRollingLocalFileAppender.setFlushHardTimeoutTimestamp(System.currentTimeMillis() + 99999999);
 
     // We should observe 3 flush events
     for (int i = 0; i < 3; i++) {
       for (int j = 0; j < 3; j++) {
         appendLogEvent(clpIrRollingLocalFileAppender);
       }
-      clpIrRollingLocalFileAppender.setSoftFlushTimeoutEpoch(System.currentTimeMillis() - 999);
+      clpIrRollingLocalFileAppender.setFlushSoftTimeoutTimestamp(System.currentTimeMillis() - 999);
       checkNumSyncEvent(clpIrRollingLocalFileAppender, i + 1, 1000);
     }
 
@@ -168,7 +168,7 @@ public class TestRollingFileLogAppender {
     // Parameters from {@code AbstractBufferedRollingFileAppender}
     clpIrRollingLocalFileAppender.setCloseFileOnShutdown(true);
     clpIrRollingLocalFileAppender.setLayout(patternLayout);
-    clpIrRollingLocalFileAppender.setBackgroundSyncSleepTimeMs(10);
+    clpIrRollingLocalFileAppender.setBackgroundSyncSleepTimeMillis(10);
 
     clpIrRollingLocalFileAppender.activateOptions();
     return clpIrRollingLocalFileAppender;

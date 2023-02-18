@@ -30,8 +30,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   // Background flush thread is used to enforce log freshness policy even if
   // no new log events are observed. Background sync thread is used to
   // asynchronously push changes
-  protected BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
-  protected BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
+  protected final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
+  protected final BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
   protected int backgroundSyncSleepTimeMillis = 1000;
   protected boolean closeFileOnShutdown = true;
 
@@ -151,9 +151,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * Method invoked by log4j library via reflection or manually by the user to
    * set the hard flush timeout of various log verbosities via a csv string
    * with the key being VERBOSITY string and value being minutes:
-   * @param parameters i.e,. "INFO=30,WARN=10,ERROR=5"
+   * @param parameters e.g., "INFO=30,WARN=10,ERROR=5"
    */
-  public void setHardFlushTimeoutMinutes (String parameters) {
+  public void setFlushHardTimeoutsInMinutes (String parameters) {
     for (String token : parameters.split(",")) {
       String[] kv = token.split("=");
       flushHardTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 60 * 1000);
@@ -166,7 +166,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * with the key being VERBOSITY string and value being seconds:
    * @param parameters i.e. "INFO=180,WARN=15,ERROR=10"
    */
-  public void setSoftFlushTimeoutSeconds (String parameters) {
+  public void setFlushSoftTimeoutsInSeconds (String parameters) {
     for (String token : parameters.split(",")) {
       String[] kv = token.split("=");
       flushSoftTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 1000);
