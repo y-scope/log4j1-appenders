@@ -159,12 +159,12 @@ public class TestRollingFileLogAppender {
     RollingFileAppenderTestHarness clpIrRollingLocalFileAppender =
         new RollingFileAppenderTestHarness();
     // Parameters from {@code AbstractClpIrBufferedRollingFileAppender}
-    clpIrRollingLocalFileAppender.setCompressedRolloverSize(compressedRolloverSize);
-    clpIrRollingLocalFileAppender.setUncompressedRolloverSize(uncompressedRolloverSize);
+    clpIrRollingLocalFileAppender.setRolloverCompressedSizeThreshold(compressedRolloverSize);
+    clpIrRollingLocalFileAppender.setRolloverUncompressedSizeThreshold(uncompressedRolloverSize);
     clpIrRollingLocalFileAppender.setOutputDir(outputDir);
     clpIrRollingLocalFileAppender.setBaseName(baseName);
     clpIrRollingLocalFileAppender.setCloseFrameOnFlush(true);
-    clpIrRollingLocalFileAppender.setUseCompactEncoding(true);
+    clpIrRollingLocalFileAppender.setUseFourByteEncoding(true);
     // Parameters from {@code AbstractBufferedRollingFileAppender}
     clpIrRollingLocalFileAppender.setCloseFileOnShutdown(true);
     clpIrRollingLocalFileAppender.setLayout(patternLayout);

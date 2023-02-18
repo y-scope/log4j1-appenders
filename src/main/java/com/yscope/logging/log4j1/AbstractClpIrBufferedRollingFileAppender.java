@@ -27,23 +27,22 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   // searching the compressed log file at a later time. The uncompressed size
   // is also used to ensure that compressed log files when decompressed back
   // to its original content be opened efficiently by file editors.
-  private long compressedRolloverSize = 16 * 1024 * 1024;
+  private long rolloverCompressedSizeThreshold = 16 * 1024 * 1024;  // Bytes
   private long compressedSizeSinceLastRollover = 0L;
 
-  private long uncompressedRolloverSize = 2L * 1024 * 1024 * 1024;
+  private long rolloverUncompressedSizeThreshold = 2L * 1024 * 1024 * 1024;  // Bytes
   private long uncompressedSizeSinceLastRollover = 0L;
 
   // CLP streaming compression parameters
-  private int compressionLevel = 3;
   private boolean closeFrameOnFlush = true;
-  private boolean useCompactEncoding = false;
+  private boolean useFourByteEncoding = false;
 
   @Override
   public void activateOptions () {
     super.activateOptions();
     try {
-      clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useCompactEncoding,
-                                                closeFrameOnFlush, compressionLevel);
+      clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useFourByteEncoding,
+                                                closeFrameOnFlush, 3);
     } catch (IOException e) {
       logError("Failed to activate appender", e);
     }
@@ -59,16 +58,16 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     clpIrFileAppender.flush();
   }
 
-  public void setCompressedRolloverSize (long compressedRolloverSize) {
-    this.compressedRolloverSize = compressedRolloverSize;
+  public void setRolloverCompressedSizeThreshold (long rolloverCompressedSizeThreshold) {
+    this.rolloverCompressedSizeThreshold = rolloverCompressedSizeThreshold;
   }
 
-  public void setUncompressedRolloverSize (long uncompressedRolloverSize) {
-    this.uncompressedRolloverSize = uncompressedRolloverSize;
+  public void setRolloverUncompressedSizeThreshold (long rolloverUncompressedSizeThreshold) {
+    this.rolloverUncompressedSizeThreshold = rolloverUncompressedSizeThreshold;
   }
 
-  public void setUseCompactEncoding (boolean useCompactEncoding) {
-    this.useCompactEncoding = useCompactEncoding;
+  public void setUseFourByteEncoding (boolean useFourByteEncoding) {
+    this.useFourByteEncoding = useFourByteEncoding;
   }
 
   public void setOutputDir (String outputDir) {
@@ -93,8 +92,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   @Override
   protected boolean rolloverRequired () {
-    return getCompressedSize() > compressedRolloverSize
-        || getUncompressedSize() > uncompressedRolloverSize;
+    return getCompressedSize() > rolloverCompressedSizeThreshold
+        || getUncompressedSize() > rolloverUncompressedSizeThreshold;
   }
 
   @Override
@@ -111,7 +110,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   @Override
   protected void startNewBufferedFile () {
     try {
-      compressedRolloverSize += clpIrFileAppender.getCompressedSize();
+      rolloverCompressedSizeThreshold += clpIrFileAppender.getCompressedSize();
       uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
       clpIrFileAppender.startNewFile(currentLogPath);
     } catch (IOException e) {
