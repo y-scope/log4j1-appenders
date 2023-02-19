@@ -1,8 +1,9 @@
 package com.yscope.logging.log4j1;
 
-import org.apache.log4j.spi.LoggingEvent;
-
 import java.io.IOException;
+import java.nio.file.Paths;
+
+import org.apache.log4j.spi.LoggingEvent;
 
 /**
  * This abstract class extends {@code AbstractBufferedRollingFileAppender} with
@@ -16,7 +17,6 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   protected String baseName;
   protected ClpIrFileAppender clpIrFileAppender = null;
-  protected String currentFileName;
   protected String outputDir;
 
   // File size based rollover strategy for streaming compressed logging is
@@ -103,8 +103,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   @Override
   protected void updateLogFilePath () {
-    updateLogFileName();
-    currentLogPath = outputDir + "/" + currentFileName;
+    currentLogPath = Paths.get(outputDir, baseName + "." + lastRolloverTimestamp
+        + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION).toString();
   }
 
   @Override
@@ -116,10 +116,5 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     } catch (IOException e) {
       logError("Failed to start new buffered file", e);
     }
-  }
-
-  protected void updateLogFileName () {
-    currentFileName = baseName + "." + lastRolloverTimestamp
-        + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION;
   }
 }
