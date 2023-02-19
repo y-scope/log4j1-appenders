@@ -76,7 +76,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * {@code closeBufferedAppender()}, {@code sync()}, etc
    */
   @Override
-  public final void close () {
+  public final synchronized void close () {
     if (closeFileOnShutdown) {
       closeBufferedAppender();
       backgroundSyncThread.submitSyncRequest(currentLogPath, true);
@@ -107,9 +107,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * invoked.
    */
   @Override
-  public void activateOptions () {
+  public final void activateOptions () {
     resetFreshnessParameters();
-    updateLogFilePath();
+    derivedActivateOptions();
     if (closeFileOnShutdown) {
       Runtime.getRuntime().addShutdownHook(new Thread(this::close));
     }
@@ -123,8 +123,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * it is not overridden by derived class. To allow for user-defined
    * behaviours, user should override the following hook methods:
    * {@code appendBufferedFile}, {@code rollOverRequired},
-   * {@code resetFreshnessParameters()}, {@code updateLogFilePath()},
-   * {@code startNewBufferedFile()}, etc
+   * {@code resetFreshnessParameters()}, {@code startNewBufferedFile()}, etc.
    * @param loggingEvent
    */
   @Override
@@ -135,7 +134,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       resetRolloverParameters(loggingEvent);
       resetFreshnessParameters();
       backgroundSyncThread.submitSyncRequest(currentLogPath, true);
-      updateLogFilePath();
       startNewBufferedFile();
     } else {
       updateFreshnessParameters(loggingEvent);
@@ -219,17 +217,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   protected abstract boolean rolloverRequired ();
 
-  /**
-   * The implementation shall update the {@code currentLogPath} class member
-   * variable. This method is triggered if rollover is required but prior to
-   * {@code startNewBufferedFile()}
-   */
-  protected abstract void updateLogFilePath ();
+  protected abstract void derivedActivateOptions ();
 
   /**
-   * The implementation shall set up a new buffered file using
-   * {@code logfilePath} class member variable updated prior by the
-   * {@code updateLogFilePath} method.
+   * The implementation shall set up a new buffered file using the
+   * {@code currentLogFilePath} class member variable.
    */
   protected abstract void startNewBufferedFile ();
 

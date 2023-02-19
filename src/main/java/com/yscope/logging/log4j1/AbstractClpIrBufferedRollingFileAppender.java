@@ -38,8 +38,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   private boolean useFourByteEncoding = false;
 
   @Override
-  public void activateOptions () {
-    super.activateOptions();
+  public void derivedActivateOptions () {
+    updateLogFilePath();
     try {
       clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useFourByteEncoding,
                                                 closeFrameOnFlush, 3);
@@ -102,13 +102,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  protected void updateLogFilePath () {
-    currentLogPath = Paths.get(outputDir, baseName + "." + lastRolloverTimestamp
-        + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION).toString();
-  }
-
-  @Override
   protected void startNewBufferedFile () {
+    updateLogFilePath();
     try {
       compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
       uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
@@ -116,5 +111,10 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     } catch (IOException e) {
       logError("Failed to start new buffered file", e);
     }
+  }
+
+  private void updateLogFilePath () {
+    currentLogPath = Paths.get(outputDir, baseName + "." + lastRolloverTimestamp
+        + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION).toString();
   }
 }
