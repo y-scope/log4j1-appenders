@@ -149,8 +149,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Method invoked by log4j library via reflection or manually by the user to
-   * set the hard flush timeout of various log verbosities via a csv string
-   * with the key being VERBOSITY string and value being minutes:
+   * set the hard flush timeout of multiple log levels via a csv string with the
+   * key being the LEVEL string and the value being minutes:
    * @param parameters e.g., "INFO=30,WARN=10,ERROR=5"
    */
   public void setFlushHardTimeoutsInMinutes (String parameters) {
@@ -162,9 +162,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Method invoked by log4j library via reflection or manually by the user to
-   * set the soft flush timeout of variouss log verbosities via a csv string
-   * with the key being VERBOSITY string and value being seconds:
-   * @param parameters i.e. "INFO=180,WARN=15,ERROR=10"
+   * set the soft flush timeout of multiple log levels via a csv string with the
+   * key being the LEVEL string and the value being seconds:
+   * @param parameters e.g. "INFO=180,WARN=15,ERROR=10"
    */
   public void setFlushSoftTimeoutsInSeconds (String parameters) {
     for (String token : parameters.split(",")) {
@@ -297,7 +297,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * ensure actual log append operation is unblocked as soon as possible.
    * @throws IOException on I/O error
    */
-  protected synchronized void ensureLogFreshness () throws IOException {
+  protected synchronized void flushAndSyncIfNecessary () throws IOException {
     long ts = System.currentTimeMillis();
     if (ts > flushSoftTimeoutTimestamp || ts > flushHardTimeoutTimestamp) {
       flush();
@@ -324,7 +324,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     public void run () {
       while (true) {
         try {
-          ensureLogFreshness();
+          flushAndSyncIfNecessary();
           sleep(backgroundSyncSleepTimeMillis);
         } catch (IOException e) {
           logError("Failed to flush buffered appender in the background", e);
