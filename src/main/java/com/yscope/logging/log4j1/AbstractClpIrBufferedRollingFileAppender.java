@@ -16,6 +16,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   public static final String CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION = ".clp.zst";
 
   protected String baseName;
+  protected long lastRolloverTimestamp = System.currentTimeMillis();
   protected ClpIrFileAppender clpIrFileAppender = null;
   protected String outputDir;
 
@@ -102,7 +103,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  protected void startNewBufferedFile () {
+  protected void startNewBufferedFile (long lastRolloverTimestamp) {
+    this.lastRolloverTimestamp = lastRolloverTimestamp;
     updateLogFilePath();
     try {
       compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();

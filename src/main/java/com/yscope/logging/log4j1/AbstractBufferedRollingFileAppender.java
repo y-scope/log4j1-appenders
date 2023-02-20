@@ -36,7 +36,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   protected boolean closeFileOnShutdown = true;
 
   protected String currentLogPath = null;
-  protected long lastRolloverTimestamp = System.currentTimeMillis();
 
   // Hard and soft timeouts are leveraged to opportunistically flush the
   // output buffer. Hard timeout triggers a delayed buffer flush after a log
@@ -131,10 +130,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     appendBufferedFile(loggingEvent);
 
     if (rolloverRequired()) {
-      resetRolloverParameters(loggingEvent);
       resetFreshnessParameters();
       backgroundSyncThread.addSyncRequest(currentLogPath, true);
-      startNewBufferedFile();
+      startNewBufferedFile(loggingEvent.getTimeStamp());
     } else {
       updateFreshnessParameters(loggingEvent);
     }
@@ -222,8 +220,10 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   /**
    * The implementation shall set up a new buffered file using the
    * {@code currentLogFilePath} class member variable.
+   * @param lastRolloverTimestamp Timestamp of the last event that was logged
+   * before calling this method.
    */
-  protected abstract void startNewBufferedFile ();
+  protected abstract void startNewBufferedFile (long lastRolloverTimestamp);
 
   /**
    * The implementation shall append the log event into derived class's buffered
@@ -296,15 +296,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       backgroundSyncThread.addSyncRequest(currentLogPath, false);
       resetFreshnessParameters();
     }
-  }
-
-  /**
-   * Resets statistical counters after a file rollover. User can extend this
-   * method as necessary to reset additional statistical counters.
-   * @param loggingEvent
-   */
-  protected void resetRolloverParameters (LoggingEvent loggingEvent) {
-    lastRolloverTimestamp = loggingEvent.timeStamp;
   }
 
   /**
