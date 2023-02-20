@@ -6,9 +6,18 @@ import java.nio.file.Paths;
 import org.apache.log4j.spi.LoggingEvent;
 
 /**
- * This abstract class extends {@code AbstractBufferedRollingFileAppender} with
- * buffered CLP Intermediate Representation streaming log compression
- * functionality
+ * This class extends {@link AbstractBufferedRollingFileAppender} to append to
+ * CLP compressed IR-stream files and rollover based on the amount of
+ * uncompressed and compressed data written to a file.
+ * <p></p>
+ * Rollover based on the amount of uncompressed data written to file allows us
+ * to ensure that the file remains manageable when decompressed for viewing,
+ * etc.
+ * <p></p>
+ * Rollover based on the amount of compressed data written to file allows us to
+ * ensure the file is large enough to amortize filesystem overhead, and small
+ * enough to be performant when uploading to remote storage as well as when
+ * accessing and searching the compressed file.
  */
 public abstract class AbstractClpIrBufferedRollingFileAppender
     extends AbstractBufferedRollingFileAppender
@@ -22,14 +31,6 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   // CLP streaming compression parameters
   private boolean closeFrameOnFlush = true;
   private boolean useFourByteEncoding = false;
-  // File size based rollover strategy for streaming compressed logging is
-  // governed by both the compressed on-disk size and the size of raw
-  // uncompressed content. The former is to ensure a reasonable local and/or
-  // remote file size to reduce both the file system overhead and cost during
-  // log generation, synchronization with remote log store, accessing and
-  // searching the compressed log file at a later time. The uncompressed size
-  // is also used to ensure that compressed log files when decompressed back
-  // to its original content be opened efficiently by file editors.
   private long rolloverCompressedSizeThreshold = 16 * 1024 * 1024;  // Bytes
   private long rolloverUncompressedSizeThreshold = 2L * 1024 * 1024 * 1024;  // Bytes
 
