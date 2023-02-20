@@ -56,6 +56,8 @@ import org.apache.log4j.spi.LoggingEvent;
 public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppenderSkeleton
     implements Flushable
 {
+  protected String currentLogPath = null;
+
   // Appender settings, some of which may be set by Log4j through reflection
   private boolean closeFileOnShutdown = true;
   private final HashMap<Level, Long> flushHardTimeoutPerLevel = new HashMap<>();
@@ -73,8 +75,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   private final BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
 
   private boolean activated = false;
-
-  protected String currentLogPath = null;
 
   public AbstractBufferedRollingFileAppender () {
     // The default flush timeout values below are optimized for high latency
