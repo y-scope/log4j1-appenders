@@ -15,10 +15,13 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 {
   public static final String CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION = ".clp.zst";
 
-  protected String baseName;
-  protected ClpIrFileAppender clpIrFileAppender = null;
-  protected String outputDir;
-
+  // Appender settings, some of which may be set by Log4j through reflection.
+  // For descriptions of the properties, see their setters below.
+  private String baseName;
+  private String outputDir;
+  // CLP streaming compression parameters
+  private boolean closeFrameOnFlush = true;
+  private boolean useFourByteEncoding = false;
   // File size based rollover strategy for streaming compressed logging is
   // governed by both the compressed on-disk size and the size of raw
   // uncompressed content. The former is to ensure a reasonable local and/or
@@ -28,20 +31,100 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   // is also used to ensure that compressed log files when decompressed back
   // to its original content be opened efficiently by file editors.
   private long rolloverCompressedSizeThreshold = 16 * 1024 * 1024;  // Bytes
-  private long compressedSizeSinceLastRollover = 0L;
-
   private long rolloverUncompressedSizeThreshold = 2L * 1024 * 1024 * 1024;  // Bytes
+
+  private long compressedSizeSinceLastRollover = 0L;
   private long uncompressedSizeSinceLastRollover = 0L;
 
-  // CLP streaming compression parameters
-  private boolean closeFrameOnFlush = true;
-  private boolean useFourByteEncoding = false;
+  private ClpIrFileAppender clpIrFileAppender = null;
+
+  /**
+   * Sets the threshold for the file's compressed size at which rollover should
+   * be triggered.
+   * @param rolloverCompressedSizeThreshold The threshold size in bytes
+   */
+  public void setRolloverCompressedSizeThreshold (long rolloverCompressedSizeThreshold) {
+    this.rolloverCompressedSizeThreshold = rolloverCompressedSizeThreshold;
+  }
+
+  /**
+   * Sets the threshold for the file's uncompressed size at which rollover
+   * should be triggered.
+   * @param rolloverUncompressedSizeThreshold The threshold size in bytes
+   */
+  public void setRolloverUncompressedSizeThreshold (long rolloverUncompressedSizeThreshold) {
+    this.rolloverUncompressedSizeThreshold = rolloverUncompressedSizeThreshold;
+  }
+
+  /**
+   * @param useFourByteEncoding Whether to use CLP's four-byte encoding instead
+   * of the default eight-byte encoding
+   */
+  public void setUseFourByteEncoding (boolean useFourByteEncoding) {
+    this.useFourByteEncoding = useFourByteEncoding;
+  }
+
+  /**
+   * @param outputDir The output directory path for log files
+   */
+  public void setOutputDir (String outputDir) {
+    this.outputDir = outputDir;
+  }
+
+  /**
+   * @param baseName The base filename for log files
+   */
+  public void setBaseName (String baseName) {
+    this.baseName = baseName;
+  }
+
+  /**
+   * @param closeFrameOnFlush Whether to close the compressor's frame on flush
+   */
+  public void setCloseFrameOnFlush (boolean closeFrameOnFlush) {
+    this.closeFrameOnFlush = closeFrameOnFlush;
+  }
+
+  /**
+   * @return The uncompressed size of all log events processed by this appender
+   * in bytes.
+   */
+  public long getUncompressedSize () {
+    return uncompressedSizeSinceLastRollover + clpIrFileAppender.getUncompressedSize();
+  }
+
+  /**
+   * @return The compressed size of all log events processed by this appender in
+   * bytes.
+   */
+  public long getCompressedSize () {
+    return compressedSizeSinceLastRollover + clpIrFileAppender.getCompressedSize();
+  }
 
   @Override
   public void activateOptionsHook () throws IOException {
     computeLogFilePath(System.currentTimeMillis());
     clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useFourByteEncoding,
                                               closeFrameOnFlush, 3);
+  }
+
+  @Override
+  protected void closeHook () {
+    clpIrFileAppender.close();
+  }
+
+  @Override
+  protected boolean rolloverRequired () {
+    return getCompressedSize() > rolloverCompressedSizeThreshold
+        || getUncompressedSize() > rolloverUncompressedSizeThreshold;
+  }
+
+  @Override
+  protected void startNewLogFile (long lastRolloverTimestamp) throws IOException {
+    computeLogFilePath(lastRolloverTimestamp);
+    compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
+    uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
+    clpIrFileAppender.startNewFile(currentLogPath);
   }
 
   @Override
@@ -52,57 +135,6 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   @Override
   public void flush () throws IOException {
     clpIrFileAppender.flush();
-  }
-
-  public void setRolloverCompressedSizeThreshold (long rolloverCompressedSizeThreshold) {
-    this.rolloverCompressedSizeThreshold = rolloverCompressedSizeThreshold;
-  }
-
-  public void setRolloverUncompressedSizeThreshold (long rolloverUncompressedSizeThreshold) {
-    this.rolloverUncompressedSizeThreshold = rolloverUncompressedSizeThreshold;
-  }
-
-  public void setUseFourByteEncoding (boolean useFourByteEncoding) {
-    this.useFourByteEncoding = useFourByteEncoding;
-  }
-
-  public void setOutputDir (String outputDir) {
-    this.outputDir = outputDir;
-  }
-
-  public void setBaseName (String baseName) {
-    this.baseName = baseName;
-  }
-
-  public void setCloseFrameOnFlush (boolean closeFrameOnFlush) {
-    this.closeFrameOnFlush = closeFrameOnFlush;
-  }
-
-  public long getUncompressedSize () {
-    return uncompressedSizeSinceLastRollover + clpIrFileAppender.getUncompressedSize();
-  }
-
-  public long getCompressedSize () {
-    return compressedSizeSinceLastRollover + clpIrFileAppender.getCompressedSize();
-  }
-
-  @Override
-  protected boolean rolloverRequired () {
-    return getCompressedSize() > rolloverCompressedSizeThreshold
-        || getUncompressedSize() > rolloverUncompressedSizeThreshold;
-  }
-
-  @Override
-  protected void closeHook () {
-    clpIrFileAppender.close();
-  }
-
-  @Override
-  protected void startNewLogFile (long lastRolloverTimestamp) throws IOException {
-    computeLogFilePath(lastRolloverTimestamp);
-    compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
-    uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
-    clpIrFileAppender.startNewFile(currentLogPath);
   }
 
   /**

@@ -58,7 +58,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 {
   protected String currentLogPath = null;
 
-  // Appender settings, some of which may be set by Log4j through reflection
+  // Appender settings, some of which may be set by Log4j through reflection.
+  // For descriptions of the properties, see their setters below.
   private boolean closeFileOnShutdown = true;
   private final HashMap<Level, Long> flushHardTimeoutPerLevel = new HashMap<>();
   private final HashMap<Level, Long> flushSoftTimeoutPerLevel = new HashMap<>();
@@ -271,14 +272,19 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * @return Whether to trigger a rollover
-   */
-  protected abstract boolean rolloverRequired () throws Exception;
-
-  /**
    * Activates appender options for derived appenders.
    */
   protected abstract void activateOptionsHook () throws Exception;
+
+  /**
+   * Closes the derived appender. Once closed, the appender cannot be reopened.
+   */
+  protected abstract void closeHook () throws Exception;
+
+  /**
+   * @return Whether to trigger a rollover
+   */
+  protected abstract boolean rolloverRequired () throws Exception;
 
   /**
    * Starts a new log file.
@@ -288,22 +294,17 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   protected abstract void startNewLogFile (long lastRolloverTimestamp) throws Exception;
 
   /**
-   * Appends a log event to the file.
-   * @param event The log event
-   */
-  protected abstract void appendHook (LoggingEvent event) throws Exception;
-
-  /**
-   * Closes the derived appender. Once closed, the appender cannot be reopened.
-   */
-  protected abstract void closeHook () throws Exception;
-
-  /**
    * Synchronizes the log file (e.g. by uploading it to remote storage).
    * @param path Path of the log file to sync
    * @param deleteFile Whether the log file can be deleted after syncing.
    */
   protected abstract void sync (String path, boolean deleteFile) throws Exception;
+
+  /**
+   * Appends a log event to the file.
+   * @param event The log event
+   */
+  protected abstract void appendHook (LoggingEvent event) throws Exception;
 
   /**
    * Resets the soft/hard freshness timeouts.
