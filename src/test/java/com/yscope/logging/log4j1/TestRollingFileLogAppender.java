@@ -168,7 +168,7 @@ public class TestRollingFileLogAppender {
     // Parameters from {@code AbstractBufferedRollingFileAppender}
     clpIrRollingLocalFileAppender.setCloseFileOnShutdown(true);
     clpIrRollingLocalFileAppender.setLayout(patternLayout);
-    clpIrRollingLocalFileAppender.setBackgroundSyncSleepTimeMillis(10);
+    clpIrRollingLocalFileAppender.setTimeoutCheckPeriod(10);
 
     clpIrRollingLocalFileAppender.activateOptions();
     return clpIrRollingLocalFileAppender;

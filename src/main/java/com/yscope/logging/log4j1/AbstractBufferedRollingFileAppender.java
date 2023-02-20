@@ -61,7 +61,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   protected final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
   protected final BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
-  protected int backgroundSyncSleepTimeMillis = 1000;
+  protected int timeoutCheckPeriod = 1000;
   protected boolean closeFileOnShutdown = true;
 
   protected String currentLogPath = null;
@@ -88,13 +88,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Closing the appender involves closing the buffered log file, submit sync
-   * request as well as a shutdown request to terminate background executor
-   * thread responsible for flushing and synchronization. Note that similar to
-   * {@code append()}, this method is also intentionally made to be final to
-   * ensure it is not overridden by derived class. To allow for user-defined
-   * behaviors, user should override the following hook method:
-   * {@code closeBufferedAppender()}, {@code sync()}, etc
+   * Closes the appender.
+   * <p></p>
+   * This method is {@code final} to ensure it is not overridden by derived
+   * classes since this base class needs to perform actions before/after the
+   * derived class' {@link #closeHook()} method.
    */
   @Override
   public final synchronized void close () {
@@ -117,19 +115,15 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Allows log4j or derived classes to activate the options in this class. In
-   * addition, this method also starts two background threads used to
-   * asynchronously flush output buffer to file and synchronize them to remote
-   * persistent storage. A shutdown hook is installed to gracefully shut down
-   * the appender if {@code closeFileOnShutdown} is {@code true}. Otherwise, the
-   * appender will keep on appending logs until JVM exit and make the best
-   * effort to upload logs. User will accept the risk higher chance of
-   * data-loss, but gains the chance to capture logs after shutdown hook is
-   * invoked.
+   * Activates the appender's options.
+   * <p></p>
+   * This method is {@code final} to ensure it is not overridden by derived
+   * classes since this base class needs to perform actions before/after the
+   * derived class' {@link #activateOptionsHook()} method.
    */
   @Override
   public final void activateOptions () {
-    resetFreshnessParameters();
+    resetFreshnessTimeouts();
     activateOptionsHook();
     if (closeFileOnShutdown) {
       Runtime.getRuntime().addShutdownHook(new Thread(this::close));
@@ -139,83 +133,89 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Append method is an opinionated sequence of steps involved in a file
-   * rollover operation. This method is intentionally made to be final to ensure
-   * it is not overridden by derived class. To allow for user-defined
-   * behaviours, user should override the following hook methods:
-   * {@code appendBufferedFile}, {@code rollOverRequired},
-   * {@code resetFreshnessParameters()}, {@code startNewBufferedFile()}, etc.
-   * @param loggingEvent
+   * Appends the given log event to the file (subject to any buffering by the
+   * derived class). This method may also trigger a rollover and sync if the
+   * derived class' {@link #rolloverRequired()} method returns true.
+   * <p></p>
+   * This method is {@code final} to ensure it is not overridden by derived
+   * classes since this base class needs to perform actions before/after the
+   * derived class' {@link #appendHook(LoggingEvent)} method. This method is
+   * also marked {@code synchronized} since it can be called from multiple
+   * logging threads.
+   * @param loggingEvent The log event
    */
   @Override
   public final synchronized void append (LoggingEvent loggingEvent) {
     appendHook(loggingEvent);
 
     if (rolloverRequired()) {
-      resetFreshnessParameters();
+      resetFreshnessTimeouts();
       backgroundSyncThread.addSyncRequest(currentLogPath, true);
-      startNewBufferedFile(loggingEvent.getTimeStamp());
+      startNewLogFile(loggingEvent.getTimeStamp());
     } else {
-      updateFreshnessParameters(loggingEvent);
+      updateFreshnessTimeouts(loggingEvent);
     }
   }
 
+  /**
+   * @return Whether the appender requires a layout
+   */
   @Override
   public boolean requiresLayout () {
     return true;
   }
 
   /**
-   * Method invoked by log4j library via reflection or manually by the user to
-   * set the hard flush timeout of multiple log levels via a csv string with the
-   * key being the LEVEL string and the value being minutes:
-   * @param parameters e.g., "INFO=30,WARN=10,ERROR=5"
+   * Sets the per-log-level hard timeouts for flushing.
+   * @param csvTimeouts A CSV string of kv-pairs. The key being the log-level in
+   * all caps and the value being the hard timeout for flushing in minutes. E.g.
+   * "INFO=30,WARN=10,ERROR=5"
    */
-  public void setFlushHardTimeoutsInMinutes (String parameters) {
-    for (String token : parameters.split(",")) {
+  public void setFlushHardTimeoutsInMinutes (String csvTimeouts) {
+    for (String token : csvTimeouts.split(",")) {
       String[] kv = token.split("=");
       flushHardTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 60 * 1000);
     }
   }
 
   /**
-   * Method invoked by log4j library via reflection or manually by the user to
-   * set the soft flush timeout of multiple log levels via a csv string with the
-   * key being the LEVEL string and the value being seconds:
-   * @param parameters e.g. "INFO=180,WARN=15,ERROR=10"
+   * Sets the per-log-level soft timeouts for flushing.
+   * @param csvTimeouts A CSV string of kv-pairs. The key being the log-level in
+   * all caps and the value being the soft timeout for flushing in seconds. E.g.
+   * "INFO=180,WARN=15,ERROR=10"
    */
-  public void setFlushSoftTimeoutsInSeconds (String parameters) {
-    for (String token : parameters.split(",")) {
+  public void setFlushSoftTimeoutsInSeconds (String csvTimeouts) {
+    for (String token : csvTimeouts.split(",")) {
       String[] kv = token.split("=");
       flushSoftTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 1000);
     }
   }
 
   /**
-   * Method invoked by log4j library via reflection or manually by the user to
-   * disable (default enable) the closing of files upon receiving a shutdown
-   * signal prior to JVM exit. This is a rarely used but useful functionality
-   * when user wants to capture as much log events as possible after a shutdown
-   * signal is received at the risk of data loss.
-   * @param closeFileOnShutdown
+   * Sets whether to close the log file upon receiving a shutdown signal before
+   * the JVM exits. If set to false, the appender will continue appending logs
+   * even while the JVM is shutting down and the appender will do its best to
+   * sync those logs before the JVM shuts down. This presents a tradeoff
+   * between capturing more log events and potential data loss if the log events
+   * cannot be flushed and synced before the JVM shuts down.
+   * @param closeFileOnShutdown Whether to close the log file on shutdown
    */
   public void setCloseFileOnShutdown (boolean closeFileOnShutdown) {
     this.closeFileOnShutdown = closeFileOnShutdown;
   }
 
   /**
-   * Method invoked by log4j library via reflection or manually by the user to
-   * adjust the amount of time which the background sync thread sleeps between
-   * work iterations
-   * @param milliseconds
+   * Sets the period between checking for soft/hard timeouts (and then
+   * triggering a flush and sync).
+   * @param milliseconds The period in milliseconds
    */
-  public void setBackgroundSyncSleepTimeMillis (int milliseconds) {
-    this.backgroundSyncSleepTimeMillis = milliseconds;
+  public void setTimeoutCheckPeriod (int milliseconds) {
+    timeoutCheckPeriod = milliseconds;
   }
 
   /**
-   * In some cases, such as unit testing, we want to explicitly set the deadline
-   * parameters to precisely control flushing behavior
+   * Sets the hard timeout timestamp for the next flush. This method is
+   * primarily used for unit testing.
    * @param timestamp Timestamp as milliseconds since the UNIX epoch
    */
   public void setFlushHardTimeoutTimestamp (long timestamp) {
@@ -223,62 +223,60 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * In some cases, such as unit testing, we want to explicitly set the deadline
-   * parameters to precisely control flushing behavior
-   * @param timestamp Timestmp as milliseconds since the UNIX epoch
+   * Sets the soft timeout timestamp for the next flush. This method is
+   * primarily used for unit testing.
+   * @param timestamp Timestamp as milliseconds since the UNIX epoch
    */
   public void setFlushSoftTimeoutTimestamp (long timestamp) {
     flushSoftTimeoutTimestamp = timestamp;
   }
 
   /**
-   * The implementation shall determine the conditions to trigger rollover
-   * @return Whether to trigger rollover
+   * @return Whether to trigger a rollover
    */
   protected abstract boolean rolloverRequired ();
 
+  /**
+   * Activates appender options for derived appenders.
+   */
   protected abstract void activateOptionsHook ();
 
   /**
-   * The implementation shall set up a new buffered file using the
-   * {@code currentLogFilePath} class member variable.
+   * Starts a new log file.
    * @param lastRolloverTimestamp Timestamp of the last event that was logged
-   * before calling this method.
+   * before calling this method (useful for naming the new log file).
    */
-  protected abstract void startNewBufferedFile (long lastRolloverTimestamp);
+  protected abstract void startNewLogFile (long lastRolloverTimestamp);
 
   /**
-   * The implementation shall append the log event into derived class's buffered
-   * file implementation.
-   * @param loggingEvent
+   * Appends a log event to the file.
+   * @param event The log event
    */
-  protected abstract void appendHook (LoggingEvent loggingEvent);
+  protected abstract void appendHook (LoggingEvent event);
 
   /**
-   * The implementation shall close the underlying buffered appender
+   * Closes the derived appender. Once closed, the appender cannot be reopened.
    */
   protected abstract void closeHook ();
 
   /**
-   * The implementation of this abstract sync method shall fulfill the duty of
-   * managing on-disk and/or remote log file life-cycles. For example: upload
-   * files to remote storage while retaining 3 most recently used log files on
-   * local on-disk storage.
-   * @param path of log file on the local file system
-   * @param deleteFile whenever the implementation sees fit
+   * Synchronizes the log file (e.g. by uploading it to remote storage).
+   * @param path Path of the log file to sync
+   * @param deleteFile Whether the log file can be deleted after syncing.
    */
   protected abstract void sync (String path, boolean deleteFile);
 
   /**
-   * Reset freshness parameter means increasing the deadline to infinity. Only
-   * when a new log message is appended will the deadline be updated.
+   * Resets the soft/hard freshness timeouts.
    */
-  protected void resetFreshnessParameters () {
+  protected void resetFreshnessTimeouts () {
     flushHardTimeoutTimestamp = Long.MAX_VALUE;
     flushSoftTimeoutTimestamp = Long.MAX_VALUE;
     if (Thread.currentThread().isInterrupted()) {
-      // Soft cap is lowered to minimum after thread is interrupted to
-      // increase reliability of log upload
+      // Since the thread has been interrupted (presumably because the app is
+      // being shut down), lower the maximum soft timeout to a minimum to
+      // increase the likelihood that the log will be synced before the app
+      // shuts down.
       flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.FATAL);
     } else {
       flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.INFO);
@@ -286,11 +284,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Based on the log event's verbosity, update the freshness parameters
-   * accordingly to the freshness policy configurations.
-   * @param loggingEvent
+   * Updates the soft/hard freshness timeouts based on the given log event's log
+   * level and timestamp.
+   * @param loggingEvent The log event
    */
-  protected void updateFreshnessParameters (LoggingEvent loggingEvent) {
+  protected void updateFreshnessTimeouts (LoggingEvent loggingEvent) {
     Level level = loggingEvent.getLevel();
     long timeoutTimestamp = loggingEvent.timeStamp + flushHardTimeoutPerLevel.get(level);
     flushHardTimeoutTimestamp = Math.min(flushHardTimeoutTimestamp, timeoutTimestamp);
@@ -302,13 +300,12 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Ensure the on-disk buffer of the buffered appender is synchronized with
-   * remote persistent storage according to a set of soft/hard timeout. Note
-   * that this method is marked as synchronized because file flushing could be
-   * called in the background in the {@code BackgroundFlushThread}. We must
-   * ensure flush does not have data race with append operations.
-   * Synchronization after the flush is also processed in the background as to
-   * ensure actual log append operation is unblocked as soon as possible.
+   * Flushes and synchronizes the log file if one of the freshness timeouts has
+   * been reached.
+   * <p></p>
+   * This method is marked {@code synchronized} since it can be called from
+   * logging threads and the background thread that monitors the freshness
+   * timeouts.
    * @throws IOException on I/O error
    */
   protected synchronized void flushAndSyncIfNecessary () throws IOException {
@@ -316,7 +313,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     if (ts > flushSoftTimeoutTimestamp || ts > flushHardTimeoutTimestamp) {
       flush();
       backgroundSyncThread.addSyncRequest(currentLogPath, false);
-      resetFreshnessParameters();
+      resetFreshnessTimeouts();
     }
   }
 
@@ -330,7 +327,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       while (true) {
         try {
           flushAndSyncIfNecessary();
-          sleep(backgroundSyncSleepTimeMillis);
+          sleep(timeoutCheckPeriod);
         } catch (IOException e) {
           logError("Failed to flush buffered appender in the background", e);
         } catch (InterruptedException e) {
@@ -383,7 +380,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     /**
      * Adds a sync request to the request queue
      * @param logFilePath Path of the log file to sync
-     * @param deleteFile Whether to delete the file after it's synced
+     * @param deleteFile Whether the log file can be deleted after syncing.
      */
     public void addSyncRequest (String logFilePath, boolean deleteFile) {
       Request syncRequest = new SyncRequest(logFilePath, deleteFile);

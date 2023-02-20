@@ -50,8 +50,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  public void appendHook (LoggingEvent loggingEvent) {
-    clpIrFileAppender.append(loggingEvent);
+  public void appendHook (LoggingEvent event) {
+    clpIrFileAppender.append(event);
   }
 
   @Override
@@ -103,7 +103,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  protected void startNewBufferedFile (long lastRolloverTimestamp) {
+  protected void startNewLogFile (long lastRolloverTimestamp) {
     this.lastRolloverTimestamp = lastRolloverTimestamp;
     updateLogFilePath();
     try {
