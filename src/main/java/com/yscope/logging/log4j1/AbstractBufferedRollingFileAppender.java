@@ -9,16 +9,48 @@ import java.util.HashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
- * This abstract class enforces an opinionated workflow, skeleton interfaces and
- * hooks optimized towards buffered rolling file appender implementations with
- * remote persistent storage. For example, an appender which emits logs events
- * to S3 object store while also utilizing streaming compression to compress the
- * log events as they are generated. To keep the logs on remote persistent
- * storage relatively in sync with logs produced by the appender without the
- * need to frequently flush the buffer, an implementation of verbosity-aware
- * hard+soft timeout based log freshness policy is provided. With this
- * mechanism, derived classes can enjoy the benefit of keeping remote log file
- * synchronized efficiently.
+ * Base class for Log4j file appenders with specific design characteristics;
+ * namely, the appenders:
+ * <ol>
+ *   <li>Buffer logs, e.g. for streaming compression.</li>
+ *   <li>Rollover log files based on some policy, e.g. exceeding a threshold
+ *   size.</li>
+ *   <li>Flush and synchronize log files (e.g. to remote storage) based on how
+ *   fresh they are.</li>
+ * </ol>
+ * For instance, such an appender might compress log events as they are
+ * generated, while still flushing and uploading them to remote storage a few
+ * seconds after an error log event.
+ * <p></p>
+ * This class handles keeping track of how fresh the logs are and the high-level
+ * logic to trigger flushing, syncing, and rollover at the appropriate times.
+ * Derived classes must implement methods to do the actual flushing, syncing,
+ * and rollover as well as indicate whether rollover is necessary.
+ * <p></p>
+ * The freshness property maintained by this class allows users to specify the
+ * delay between a log event being generated and the log file being flushed and
+ * synchronized. Specifically, this class maintains a soft and hard timeout per
+ * log level:
+ * <ul>
+ *   <li><b>hard timeout</b> - the maximum delay between when a log event is
+ *   generated and the file should be flushed and synchronized.</li>
+ *   <li><b>soft timeout</b> - same as the hard timeout except it gets reset
+ *   every time a new log event with the same log level is generated.</li>
+ * </ul>
+ * The shortest timeout in each log level determines when a log file will be
+ * flushed and synchronized.
+ * <p></p>
+ * For instance, let's assume the soft and hard timeouts for ERROR logs are set
+ * to 5 seconds and 5 minutes respectively. Now imagine an ERROR log event is
+ * generated at t = 0s. This class will trigger a flush at t = 5s unless another
+ * ERROR log event is generated before then. If one is generated at t = 4s, then
+ * this class will omit the flush at t = 5s and trigger a flush at t = 9s. If
+ * ERROR log events keep being generated before a flush occurs, then this class
+ * will definitely trigger a flush at t = 5min based on the hard timeout.
+ * <p></p>
+ * Maintaining these timeouts per log level allows us to flush logs sooner if
+ * more important log levels occur. For instance, we can set smaller timeouts
+ * for ERROR log events compared to DEBUG log events.
  */
 public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppenderSkeleton
     implements Flushable
@@ -37,19 +69,12 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   protected String currentLogPath = null;
 
-  // Hard and soft timeouts are leveraged to opportunistically flush the
-  // output buffer. Hard timeout triggers a delayed buffer flush after a log
-  // event has been observed. Soft timeout also triggers a delayed buffer
-  // flush. However, before the soft timeout is triggered, it is extended if
-  // a new log event is observed. After either hard or soft deadline is
-  // triggered, the timeouts are reset until it is triggered again.
   private final HashMap<Level, Long> flushHardTimeoutPerLevel = new HashMap<>();
   private final HashMap<Level, Long> flushSoftTimeoutPerLevel = new HashMap<>();
 
   public AbstractBufferedRollingFileAppender () {
-    // Default flush timeout values optimized high latency remote
-    // persistent storage such as object store or HDFS are provided
-    flushHardTimeoutPerLevel.put(Level.OFF, Long.MAX_VALUE);
+    // The default flush timeout values below are optimized for high latency
+    // remote persistent storage such as object stores or HDFS
     flushHardTimeoutPerLevel.put(Level.FATAL, 5L * 60 * 1000 /* 5 min */);
     flushHardTimeoutPerLevel.put(Level.ERROR, 5L * 60 * 1000 /* 5 min */);
     flushHardTimeoutPerLevel.put(Level.WARN, 10L * 60 * 1000 /* 10 min */);
