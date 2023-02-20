@@ -148,18 +148,24 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   /**
    * Sets the hard timeout timestamp for the next flush. This method is
    * primarily used for unit testing.
+   * <p></p>
+   * This method is {@code synchronized} since the background threads may be
+   * using the timeout when this method is called.
    * @param timestamp Timestamp as milliseconds since the UNIX epoch
    */
-  public void setFlushHardTimeoutTimestamp (long timestamp) {
+  public synchronized void setFlushHardTimeoutTimestamp (long timestamp) {
     flushHardTimeoutTimestamp = timestamp;
   }
 
   /**
    * Sets the soft timeout timestamp for the next flush. This method is
    * primarily used for unit testing.
+   * <p></p>
+   * This method is {@code synchronized} since the background threads may be
+   * using the timeout when this method is called.
    * @param timestamp Timestamp as milliseconds since the UNIX epoch
    */
-  public void setFlushSoftTimeoutTimestamp (long timestamp) {
+  public synchronized void setFlushSoftTimeoutTimestamp (long timestamp) {
     flushSoftTimeoutTimestamp = timestamp;
   }
 
