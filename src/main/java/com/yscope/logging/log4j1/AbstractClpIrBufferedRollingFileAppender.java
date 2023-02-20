@@ -39,7 +39,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   private boolean useFourByteEncoding = false;
 
   @Override
-  public void derivedActivateOptions () {
+  public void activateOptionsHook () {
     updateLogFilePath();
     try {
       clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useFourByteEncoding,
@@ -50,7 +50,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  public void appendBufferedFile (LoggingEvent loggingEvent) {
+  public void appendHook (LoggingEvent loggingEvent) {
     clpIrFileAppender.append(loggingEvent);
   }
 
@@ -98,7 +98,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  protected void closeBufferedAppender () {
+  protected void closeHook () {
     clpIrFileAppender.close();
   }
 

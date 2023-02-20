@@ -59,9 +59,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   protected long flushSoftTimeoutTimestamp;
   protected long flushMaximumSoftTimeout;
 
-  // Background flush thread is used to enforce log freshness policy even if
-  // no new log events are observed. Background sync thread is used to
-  // asynchronously push changes
   protected final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
   protected final BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
   protected int backgroundSyncSleepTimeMillis = 1000;
@@ -102,7 +99,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   @Override
   public final synchronized void close () {
     if (closeFileOnShutdown) {
-      closeBufferedAppender();
+      closeHook();
       backgroundSyncThread.addSyncRequest(currentLogPath, true);
       backgroundSyncThread.addShutdownRequest();
     } else {
@@ -133,7 +130,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   @Override
   public final void activateOptions () {
     resetFreshnessParameters();
-    derivedActivateOptions();
+    activateOptionsHook();
     if (closeFileOnShutdown) {
       Runtime.getRuntime().addShutdownHook(new Thread(this::close));
     }
@@ -152,7 +149,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   @Override
   public final synchronized void append (LoggingEvent loggingEvent) {
-    appendBufferedFile(loggingEvent);
+    appendHook(loggingEvent);
 
     if (rolloverRequired()) {
       resetFreshnessParameters();
@@ -240,7 +237,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   protected abstract boolean rolloverRequired ();
 
-  protected abstract void derivedActivateOptions ();
+  protected abstract void activateOptionsHook ();
 
   /**
    * The implementation shall set up a new buffered file using the
@@ -255,12 +252,12 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * file implementation.
    * @param loggingEvent
    */
-  protected abstract void appendBufferedFile (LoggingEvent loggingEvent);
+  protected abstract void appendHook (LoggingEvent loggingEvent);
 
   /**
    * The implementation shall close the underlying buffered appender
    */
-  protected abstract void closeBufferedAppender ();
+  protected abstract void closeHook ();
 
   /**
    * The implementation of this abstract sync method shall fulfill the duty of
