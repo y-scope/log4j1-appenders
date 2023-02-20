@@ -189,6 +189,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       }
       backgroundFlushThread.start();
       backgroundSyncThread.start();
+
+      activated = true;
     } catch (Exception ex) {
       logError("Failed to activate appender.", ex);
       closed = true;
