@@ -1,12 +1,12 @@
 package com.yscope.logging.log4j1;
 
-import org.apache.log4j.Level;
-import org.apache.log4j.spi.LoggingEvent;
-
 import java.io.Flushable;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+
+import org.apache.log4j.Level;
+import org.apache.log4j.spi.LoggingEvent;
 
 /**
  * Base class for Log4j file appenders with specific design characteristics;
@@ -55,19 +55,20 @@ import java.util.concurrent.LinkedBlockingQueue;
 public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppenderSkeleton
     implements Flushable
 {
-  protected long flushHardTimeoutTimestamp;
-  protected long flushSoftTimeoutTimestamp;
-  protected long flushMaximumSoftTimeout;
-
-  protected final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
-  protected final BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
-  protected int timeoutCheckPeriod = 1000;
-  protected boolean closeFileOnShutdown = true;
-
-  protected String currentLogPath = null;
-
+  // Appender settings, some of which may be set by Log4j through reflection
+  private boolean closeFileOnShutdown = true;
   private final HashMap<Level, Long> flushHardTimeoutPerLevel = new HashMap<>();
   private final HashMap<Level, Long> flushSoftTimeoutPerLevel = new HashMap<>();
+  private int timeoutCheckPeriod = 1000;
+
+  private long flushHardTimeoutTimestamp;
+  private long flushSoftTimeoutTimestamp;
+  private long flushMaximumSoftTimeout;
+
+  private final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
+  private final BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
+
+  protected String currentLogPath = null;
 
   public AbstractBufferedRollingFileAppender () {
     // The default flush timeout values below are optimized for high latency
@@ -85,6 +86,72 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     flushSoftTimeoutPerLevel.put(Level.INFO, 3L * 60 * 1000 /* 3 min */);
     flushSoftTimeoutPerLevel.put(Level.DEBUG, 3L * 60 * 1000 /* 3 min */);
     flushSoftTimeoutPerLevel.put(Level.TRACE, 3L * 60 * 1000 /* 3 min */);
+  }
+
+  /**
+   * Sets whether to close the log file upon receiving a shutdown signal before
+   * the JVM exits. If set to false, the appender will continue appending logs
+   * even while the JVM is shutting down and the appender will do its best to
+   * sync those logs before the JVM shuts down. This presents a tradeoff
+   * between capturing more log events and potential data loss if the log events
+   * cannot be flushed and synced before the JVM shuts down.
+   * @param closeFileOnShutdown Whether to close the log file on shutdown
+   */
+  public void setCloseFileOnShutdown (boolean closeFileOnShutdown) {
+    this.closeFileOnShutdown = closeFileOnShutdown;
+  }
+
+  /**
+   * Sets the per-log-level hard timeouts for flushing.
+   * @param csvTimeouts A CSV string of kv-pairs. The key being the log-level in
+   * all caps and the value being the hard timeout for flushing in minutes. E.g.
+   * "INFO=30,WARN=10,ERROR=5"
+   */
+  public void setFlushHardTimeoutsInMinutes (String csvTimeouts) {
+    for (String token : csvTimeouts.split(",")) {
+      String[] kv = token.split("=");
+      flushHardTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 60 * 1000);
+    }
+  }
+
+  /**
+   * Sets the per-log-level soft timeouts for flushing.
+   * @param csvTimeouts A CSV string of kv-pairs. The key being the log-level in
+   * all caps and the value being the soft timeout for flushing in seconds. E.g.
+   * "INFO=180,WARN=15,ERROR=10"
+   */
+  public void setFlushSoftTimeoutsInSeconds (String csvTimeouts) {
+    for (String token : csvTimeouts.split(",")) {
+      String[] kv = token.split("=");
+      flushSoftTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 1000);
+    }
+  }
+
+  /**
+   * Sets the period between checking for soft/hard timeouts (and then
+   * triggering a flush and sync).
+   * @param milliseconds The period in milliseconds
+   */
+  public void setTimeoutCheckPeriod (int milliseconds) {
+    timeoutCheckPeriod = milliseconds;
+  }
+
+  /**
+   * Sets the hard timeout timestamp for the next flush. This method is
+   * primarily used for unit testing.
+   * @param timestamp Timestamp as milliseconds since the UNIX epoch
+   */
+  public void setFlushHardTimeoutTimestamp (long timestamp) {
+    flushHardTimeoutTimestamp = timestamp;
+  }
+
+  /**
+   * Sets the soft timeout timestamp for the next flush. This method is
+   * primarily used for unit testing.
+   * @param timestamp Timestamp as milliseconds since the UNIX epoch
+   */
+  public void setFlushSoftTimeoutTimestamp (long timestamp) {
+    flushSoftTimeoutTimestamp = timestamp;
   }
 
   /**
@@ -166,72 +233,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Sets the per-log-level hard timeouts for flushing.
-   * @param csvTimeouts A CSV string of kv-pairs. The key being the log-level in
-   * all caps and the value being the hard timeout for flushing in minutes. E.g.
-   * "INFO=30,WARN=10,ERROR=5"
-   */
-  public void setFlushHardTimeoutsInMinutes (String csvTimeouts) {
-    for (String token : csvTimeouts.split(",")) {
-      String[] kv = token.split("=");
-      flushHardTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 60 * 1000);
-    }
-  }
-
-  /**
-   * Sets the per-log-level soft timeouts for flushing.
-   * @param csvTimeouts A CSV string of kv-pairs. The key being the log-level in
-   * all caps and the value being the soft timeout for flushing in seconds. E.g.
-   * "INFO=180,WARN=15,ERROR=10"
-   */
-  public void setFlushSoftTimeoutsInSeconds (String csvTimeouts) {
-    for (String token : csvTimeouts.split(",")) {
-      String[] kv = token.split("=");
-      flushSoftTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 1000);
-    }
-  }
-
-  /**
-   * Sets whether to close the log file upon receiving a shutdown signal before
-   * the JVM exits. If set to false, the appender will continue appending logs
-   * even while the JVM is shutting down and the appender will do its best to
-   * sync those logs before the JVM shuts down. This presents a tradeoff
-   * between capturing more log events and potential data loss if the log events
-   * cannot be flushed and synced before the JVM shuts down.
-   * @param closeFileOnShutdown Whether to close the log file on shutdown
-   */
-  public void setCloseFileOnShutdown (boolean closeFileOnShutdown) {
-    this.closeFileOnShutdown = closeFileOnShutdown;
-  }
-
-  /**
-   * Sets the period between checking for soft/hard timeouts (and then
-   * triggering a flush and sync).
-   * @param milliseconds The period in milliseconds
-   */
-  public void setTimeoutCheckPeriod (int milliseconds) {
-    timeoutCheckPeriod = milliseconds;
-  }
-
-  /**
-   * Sets the hard timeout timestamp for the next flush. This method is
-   * primarily used for unit testing.
-   * @param timestamp Timestamp as milliseconds since the UNIX epoch
-   */
-  public void setFlushHardTimeoutTimestamp (long timestamp) {
-    flushHardTimeoutTimestamp = timestamp;
-  }
-
-  /**
-   * Sets the soft timeout timestamp for the next flush. This method is
-   * primarily used for unit testing.
-   * @param timestamp Timestamp as milliseconds since the UNIX epoch
-   */
-  public void setFlushSoftTimeoutTimestamp (long timestamp) {
-    flushSoftTimeoutTimestamp = timestamp;
-  }
-
-  /**
    * @return Whether to trigger a rollover
    */
   protected abstract boolean rolloverRequired ();
@@ -269,7 +270,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   /**
    * Resets the soft/hard freshness timeouts.
    */
-  protected void resetFreshnessTimeouts () {
+  private void resetFreshnessTimeouts () {
     flushHardTimeoutTimestamp = Long.MAX_VALUE;
     flushSoftTimeoutTimestamp = Long.MAX_VALUE;
     if (Thread.currentThread().isInterrupted()) {
@@ -288,7 +289,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * level and timestamp.
    * @param loggingEvent The log event
    */
-  protected void updateFreshnessTimeouts (LoggingEvent loggingEvent) {
+  private void updateFreshnessTimeouts (LoggingEvent loggingEvent) {
     Level level = loggingEvent.getLevel();
     long timeoutTimestamp = loggingEvent.timeStamp + flushHardTimeoutPerLevel.get(level);
     flushHardTimeoutTimestamp = Math.min(flushHardTimeoutTimestamp, timeoutTimestamp);
@@ -308,7 +309,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * timeouts.
    * @throws IOException on I/O error
    */
-  protected synchronized void flushAndSyncIfNecessary () throws IOException {
+  private synchronized void flushAndSyncIfNecessary () throws IOException {
     long ts = System.currentTimeMillis();
     if (ts > flushSoftTimeoutTimestamp || ts > flushHardTimeoutTimestamp) {
       flush();

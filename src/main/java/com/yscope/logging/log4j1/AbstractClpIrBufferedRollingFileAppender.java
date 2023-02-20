@@ -80,7 +80,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   public void setCloseFrameOnFlush (boolean closeFrameOnFlush) {
-    this.closeFileOnShutdown = closeFrameOnFlush;
+    this.closeFrameOnFlush = closeFrameOnFlush;
   }
 
   public long getUncompressedSize () {
