@@ -137,8 +137,8 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
   }
 
   /**
-   * @return The amount of data written by this appender to the output file, in
-   * bytes.
+   * @return The amount of data written by this appender to the current output
+   * file, in bytes. This will be reset when a new output file is opened.
    */
   public synchronized long getCompressedSize () {
     return countingOutputStream.getByteCount();

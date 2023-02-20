@@ -34,8 +34,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   private long rolloverCompressedSizeThreshold = 16 * 1024 * 1024;  // Bytes
   private long rolloverUncompressedSizeThreshold = 2L * 1024 * 1024 * 1024;  // Bytes
 
-  private long compressedSizeSinceLastRollover = 0L;
-  private long uncompressedSizeSinceLastRollover = 0L;
+  private long compressedSizeSinceLastRollover = 0L;  // Bytes
+  private long uncompressedSizeSinceLastRollover = 0L;  // Bytes
 
   private ClpIrFileAppender clpIrFileAppender = null;
 
@@ -116,15 +116,15 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   @Override
   protected boolean rolloverRequired () {
-    return getCompressedSize() > rolloverCompressedSizeThreshold
-        || getUncompressedSize() > rolloverUncompressedSizeThreshold;
+    return clpIrFileAppender.getCompressedSize() > rolloverCompressedSizeThreshold
+        || clpIrFileAppender.getUncompressedSize() > rolloverUncompressedSizeThreshold;
   }
 
   @Override
   protected void startNewLogFile (long lastRolloverTimestamp) throws IOException {
-    computeLogFilePath(lastRolloverTimestamp);
     compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
     uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
+    computeLogFilePath(lastRolloverTimestamp);
     clpIrFileAppender.startNewFile(currentLogPath);
   }
 
