@@ -16,7 +16,6 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   public static final String CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION = ".clp.zst";
 
   protected String baseName;
-  protected long lastRolloverTimestamp = System.currentTimeMillis();
   protected ClpIrFileAppender clpIrFileAppender = null;
   protected String outputDir;
 
@@ -40,7 +39,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   @Override
   public void activateOptionsHook () throws IOException {
-    updateLogFilePath();
+    computeLogFilePath(System.currentTimeMillis());
     clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useFourByteEncoding,
                                               closeFrameOnFlush, 3);
   }
@@ -100,14 +99,18 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   @Override
   protected void startNewLogFile (long lastRolloverTimestamp) throws IOException {
-    this.lastRolloverTimestamp = lastRolloverTimestamp;
-    updateLogFilePath();
+    computeLogFilePath(lastRolloverTimestamp);
     compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
     uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
     clpIrFileAppender.startNewFile(currentLogPath);
   }
 
-  private void updateLogFilePath () {
+  /**
+   * Computes the current log file path which includes the given rollover
+   * timestamp
+   * @param lastRolloverTimestamp The approximate timestamp of the last rollover
+   */
+  private void computeLogFilePath (long lastRolloverTimestamp) {
     currentLogPath = Paths.get(outputDir, baseName + "." + lastRolloverTimestamp
         + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION).toString();
   }
