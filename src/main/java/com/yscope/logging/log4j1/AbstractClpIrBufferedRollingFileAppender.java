@@ -39,14 +39,10 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   private boolean useFourByteEncoding = false;
 
   @Override
-  public void activateOptionsHook () {
+  public void activateOptionsHook () throws IOException {
     updateLogFilePath();
-    try {
-      clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useFourByteEncoding,
-                                                closeFrameOnFlush, 3);
-    } catch (IOException e) {
-      logError("Failed to activate appender", e);
-    }
+    clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useFourByteEncoding,
+                                              closeFrameOnFlush, 3);
   }
 
   @Override
@@ -103,16 +99,12 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  protected void startNewLogFile (long lastRolloverTimestamp) {
+  protected void startNewLogFile (long lastRolloverTimestamp) throws IOException {
     this.lastRolloverTimestamp = lastRolloverTimestamp;
     updateLogFilePath();
-    try {
-      compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
-      uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
-      clpIrFileAppender.startNewFile(currentLogPath);
-    } catch (IOException e) {
-      logError("Failed to start new buffered file", e);
-    }
+    compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
+    uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
+    clpIrFileAppender.startNewFile(currentLogPath);
   }
 
   private void updateLogFilePath () {

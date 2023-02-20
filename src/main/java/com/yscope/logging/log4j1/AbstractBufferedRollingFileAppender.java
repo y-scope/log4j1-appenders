@@ -210,23 +210,24 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       return;
     }
 
-    try {
-      if (closeFileOnShutdown) {
+    if (closeFileOnShutdown) {
+      try {
         closeHook();
-        backgroundSyncThread.addSyncRequest(currentLogPath, true);
-        backgroundSyncThread.addShutdownRequest();
-      } else {
-        try {
-          // Flush now just in case we shut down before a timeout expires (and
-          // triggers a flush)
-          flush();
-        } catch (IOException e) {
-          logError("Failed to flush", e);
-        }
-        backgroundSyncThread.addSyncRequest(currentLogPath, false);
+      } catch (Exception ex) {
+        // Just log the failure but continue the close process
+        logError("closeHook failed.", ex);
       }
-    } catch (Exception ex) {
-      logError("Failed to close.", ex);
+      backgroundSyncThread.addSyncRequest(currentLogPath, true);
+      backgroundSyncThread.addShutdownRequest();
+    } else {
+      try {
+        // Flush now just in case we shut down before a timeout expires (and
+        // triggers a flush)
+        flush();
+      } catch (IOException e) {
+        logError("Failed to flush", e);
+      }
+      backgroundSyncThread.addSyncRequest(currentLogPath, false);
     }
 
     closed = true;
@@ -272,37 +273,37 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   /**
    * @return Whether to trigger a rollover
    */
-  protected abstract boolean rolloverRequired ();
+  protected abstract boolean rolloverRequired () throws Exception;
 
   /**
    * Activates appender options for derived appenders.
    */
-  protected abstract void activateOptionsHook ();
+  protected abstract void activateOptionsHook () throws Exception;
 
   /**
    * Starts a new log file.
    * @param lastRolloverTimestamp Timestamp of the last event that was logged
    * before calling this method (useful for naming the new log file).
    */
-  protected abstract void startNewLogFile (long lastRolloverTimestamp);
+  protected abstract void startNewLogFile (long lastRolloverTimestamp) throws Exception;
 
   /**
    * Appends a log event to the file.
    * @param event The log event
    */
-  protected abstract void appendHook (LoggingEvent event);
+  protected abstract void appendHook (LoggingEvent event) throws Exception;
 
   /**
    * Closes the derived appender. Once closed, the appender cannot be reopened.
    */
-  protected abstract void closeHook ();
+  protected abstract void closeHook () throws Exception;
 
   /**
    * Synchronizes the log file (e.g. by uploading it to remote storage).
    * @param path Path of the log file to sync
    * @param deleteFile Whether the log file can be deleted after syncing.
    */
-  protected abstract void sync (String path, boolean deleteFile);
+  protected abstract void sync (String path, boolean deleteFile) throws Exception;
 
   /**
    * Resets the soft/hard freshness timeouts.
@@ -392,7 +393,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
           Request request = requests.take();
           if (request instanceof SyncRequest) {
             SyncRequest syncRequest = (SyncRequest)request;
-            sync(syncRequest.logFilePath, syncRequest.deleteFile);
+            try {
+              sync(syncRequest.logFilePath, syncRequest.deleteFile);
+            } catch (Exception ex) {
+              logError("Failed to sync '" + syncRequest.logFilePath + "'", ex);
+            }
           } else if (request instanceof ShutdownRequest) {
             logDebug("Received shutdown request");
             break;
