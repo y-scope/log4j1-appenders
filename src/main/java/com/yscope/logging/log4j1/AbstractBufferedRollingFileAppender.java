@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.log4j.Level;
+import org.apache.log4j.spi.ErrorCode;
 import org.apache.log4j.spi.LoggingEvent;
 
 /**
@@ -63,10 +64,15 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   private long flushHardTimeoutTimestamp;
   private long flushSoftTimeoutTimestamp;
+  // The maximum soft timeout allowed. This is used while the app is shutting
+  // down to increase the likelihood of flushing before the app finishes
+  // shutting down.
   private long flushMaximumSoftTimeout;
 
   private final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
   private final BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
+
+  private boolean activated = false;
 
   protected String currentLogPath = null;
 
@@ -129,7 +135,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Sets the period between checking for soft/hard timeouts (and then
-   * triggering a flush and sync).
+   * triggering a flush and sync). Care should be taken to ensure this period
+   * does not significantly differ from the lowest timeout since that will
+   * cause undue delay from when a timeout expires and when a flush occurs.
    * @param milliseconds The period in milliseconds
    */
   public void setTimeoutCheckPeriod (int milliseconds) {
@@ -155,33 +163,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Closes the appender.
-   * <p></p>
-   * This method is {@code final} to ensure it is not overridden by derived
-   * classes since this base class needs to perform actions before/after the
-   * derived class' {@link #closeHook()} method.
-   */
-  @Override
-  public final synchronized void close () {
-    if (closeFileOnShutdown) {
-      closeHook();
-      backgroundSyncThread.addSyncRequest(currentLogPath, true);
-      backgroundSyncThread.addShutdownRequest();
-    } else {
-      try {
-        // If closeFileOnShutdown, we flush + sync instead.
-        // Since log appender is still running, further log append is
-        // possible and tighter freshness policy is used to increase
-        // log upload reliability after close.
-        flush();
-      } catch (IOException e) {
-        logError("Failed to flush", e);
-      }
-      backgroundSyncThread.addSyncRequest(currentLogPath, false);
-    }
-  }
-
-  /**
    * Activates the appender's options.
    * <p></p>
    * This method is {@code final} to ensure it is not overridden by derived
@@ -190,13 +171,63 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   @Override
   public final void activateOptions () {
-    resetFreshnessTimeouts();
-    activateOptionsHook();
-    if (closeFileOnShutdown) {
-      Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+    if (closed) {
+      logWarn("Already closed so cannot activate options.");
+      return;
     }
-    backgroundFlushThread.start();
-    backgroundSyncThread.start();
+
+    if (activated) {
+      logWarn("Already activated.");
+      return;
+    }
+
+    resetFreshnessTimeouts();
+    try {
+      activateOptionsHook();
+      if (closeFileOnShutdown) {
+        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+      }
+      backgroundFlushThread.start();
+      backgroundSyncThread.start();
+    } catch (Exception ex) {
+      logError("Failed to activate appender.", ex);
+      closed = true;
+    }
+  }
+
+  /**
+   * Closes the appender.
+   * <p></p>
+   * This method is {@code final} to ensure it is not overridden by derived
+   * classes since this base class needs to perform actions before/after the
+   * derived class' {@link #closeHook()} method.
+   */
+  @Override
+  public final synchronized void close () {
+    if (closed) {
+      return;
+    }
+
+    try {
+      if (closeFileOnShutdown) {
+        closeHook();
+        backgroundSyncThread.addSyncRequest(currentLogPath, true);
+        backgroundSyncThread.addShutdownRequest();
+      } else {
+        try {
+          // Flush now just in case we shut down before a timeout expires (and
+          // triggers a flush)
+          flush();
+        } catch (IOException e) {
+          logError("Failed to flush", e);
+        }
+        backgroundSyncThread.addSyncRequest(currentLogPath, false);
+      }
+    } catch (Exception ex) {
+      logError("Failed to close.", ex);
+    }
+
+    closed = true;
   }
 
   /**
@@ -213,14 +244,18 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   @Override
   public final synchronized void append (LoggingEvent loggingEvent) {
-    appendHook(loggingEvent);
+    try {
+      appendHook(loggingEvent);
 
-    if (rolloverRequired()) {
-      resetFreshnessTimeouts();
-      backgroundSyncThread.addSyncRequest(currentLogPath, true);
-      startNewLogFile(loggingEvent.getTimeStamp());
-    } else {
-      updateFreshnessTimeouts(loggingEvent);
+      if (false == rolloverRequired()) {
+        updateFreshnessTimeouts(loggingEvent);
+      } else {
+        backgroundSyncThread.addSyncRequest(currentLogPath, true);
+        resetFreshnessTimeouts();
+        startNewLogFile(loggingEvent.getTimeStamp());
+      }
+    } catch (Exception ex) {
+      getErrorHandler().error("Failed to write log event.", ex, ErrorCode.WRITE_FAILURE);
     }
   }
 
@@ -275,12 +310,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     flushSoftTimeoutTimestamp = Long.MAX_VALUE;
     if (Thread.currentThread().isInterrupted()) {
       // Since the thread has been interrupted (presumably because the app is
-      // being shut down), lower the maximum soft timeout to a minimum to
-      // increase the likelihood that the log will be synced before the app
-      // shuts down.
+      // being shut down), lower the maximum soft timeout to increase the
+      // likelihood that the log will be synced before the app shuts down.
       flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.FATAL);
     } else {
-      flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.INFO);
+      flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.TRACE);
     }
   }
 
