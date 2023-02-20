@@ -4,6 +4,7 @@ import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PatternLayout;
 import org.apache.log4j.spi.LoggingEvent;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
@@ -41,8 +42,6 @@ public class TestRollingFileLogAppender {
     // Close the appender should sync and close the current opened file
     clpIrRollingLocalFileAppender.close();
     checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 3, 1000);
-
-    teardown();
   }
 
   /**
@@ -69,8 +68,6 @@ public class TestRollingFileLogAppender {
     // appender shall close the current empty file
     clpIrRollingLocalFileAppender.close();
     checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 2, 1000);
-
-    teardown();
   }
 
   /**
@@ -92,8 +89,6 @@ public class TestRollingFileLogAppender {
     // After closing the file appender, we should have 1 close/delete event
     clpIrRollingLocalFileAppender.close();
     checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 1, 1000);
-
-    teardown();
   }
 
   /**
@@ -121,8 +116,11 @@ public class TestRollingFileLogAppender {
     // After closing the file appender, we should have 1 flush + close event
     clpIrRollingLocalFileAppender.close();
     checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 1, 1000);
+  }
 
-    teardown();
+  @AfterEach
+  public void cleanUpFiles () {
+    Arrays.stream(new File(outputDir).listFiles()).forEach(File::delete);
   }
 
   private void appendLogEvent (RollingFileAppenderTestHarness appender) {
@@ -172,9 +170,5 @@ public class TestRollingFileLogAppender {
 
     clpIrRollingLocalFileAppender.activateOptions();
     return clpIrRollingLocalFileAppender;
-  }
-
-  private void teardown () {
-    Arrays.stream(new File(outputDir).listFiles()).forEach(File::delete);
   }
 }
