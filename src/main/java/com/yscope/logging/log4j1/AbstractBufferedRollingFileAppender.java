@@ -79,8 +79,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   public final synchronized void close () {
     if (closeFileOnShutdown) {
       closeBufferedAppender();
-      backgroundSyncThread.submitSyncRequest(currentLogPath, true);
-      backgroundSyncThread.submitShutdownRequest();
+      backgroundSyncThread.addSyncRequest(currentLogPath, true);
+      backgroundSyncThread.addShutdownRequest();
     } else {
       try {
         // If closeFileOnShutdown, we flush + sync instead.
@@ -91,7 +91,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       } catch (IOException e) {
         logError("Failed to flush", e);
       }
-      backgroundSyncThread.submitSyncRequest(currentLogPath, false);
+      backgroundSyncThread.addSyncRequest(currentLogPath, false);
     }
   }
 
@@ -133,7 +133,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     if (rolloverRequired()) {
       resetRolloverParameters(loggingEvent);
       resetFreshnessParameters();
-      backgroundSyncThread.submitSyncRequest(currentLogPath, true);
+      backgroundSyncThread.addSyncRequest(currentLogPath, true);
       startNewBufferedFile();
     } else {
       updateFreshnessParameters(loggingEvent);
@@ -293,7 +293,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     long ts = System.currentTimeMillis();
     if (ts > flushSoftTimeoutTimestamp || ts > flushHardTimeoutTimestamp) {
       flush();
-      backgroundSyncThread.submitSyncRequest(currentLogPath, false);
+      backgroundSyncThread.addSyncRequest(currentLogPath, false);
       resetFreshnessParameters();
     }
   }
@@ -308,8 +308,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Periodically flushes buffered log appender when timeout-based freshness
-   * guarantee policy is met
+   * Periodically flushes and syncs the current log file if we've exceeded one
+   * of the freshness timeouts.
    */
   private class BackgroundFlushThread extends Thread {
     @Override
@@ -322,8 +322,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
           logError("Failed to flush buffered appender in the background", e);
         } catch (InterruptedException e) {
           if (closeFileOnShutdown) {
-            logDebug("Received interrupt message for graceful shutdown of "
-                         + "BackgroundFlushThread");
+            logDebug("Received interrupt message for graceful shutdown of BackgroundFlushThread");
             break;
           }
         }
@@ -332,9 +331,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * This thread calls {@code AbstractBufferedRollingFileAppender.sync()} in
-   * response to synchronization requests. Derived classes should implement
-   * {@code sync()} according to their synchronization needs.
+   * Thread to synchronize log files in the background (by calling
+   * {@link #sync(String, boolean) sync}). The thread maintains a request queue
+   * that callers should populate.
    */
   private class BackgroundSyncThread extends Thread {
     private final LinkedBlockingQueue<Request> requests = new LinkedBlockingQueue<>();
@@ -346,7 +345,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
           Request request = requests.take();
           if (request instanceof SyncRequest) {
             SyncRequest syncRequest = (SyncRequest)request;
-            sync(syncRequest.path, syncRequest.deleteFile);
+            sync(syncRequest.logFilePath, syncRequest.deleteFile);
           } else if (request instanceof ShutdownRequest) {
             logDebug("Received shutdown request");
             break;
@@ -359,14 +358,22 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       }
     }
 
-    public void submitShutdownRequest () {
-      logDebug("Submitting shutdown request");
+    /**
+     * Adds a shutdown request to the request queue
+     */
+    public void addShutdownRequest () {
+      logDebug("Adding shutdown request");
       Request shutdownRequest = new ShutdownRequest();
       while (false == requests.offer(shutdownRequest)) {}
     }
 
-    public void submitSyncRequest (String path, boolean deleteFile) {
-      Request syncRequest = new SyncRequest(path, deleteFile);
+    /**
+     * Adds a sync request to the request queue
+     * @param logFilePath Path of the log file to sync
+     * @param deleteFile Whether to delete the file after it's synced
+     */
+    public void addSyncRequest (String logFilePath, boolean deleteFile) {
+      Request syncRequest = new SyncRequest(logFilePath, deleteFile);
       while (false == requests.offer(syncRequest)) {}
     }
 
@@ -375,11 +382,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     private class ShutdownRequest extends Request {}
 
     private class SyncRequest extends Request {
-      public String path;
-      public boolean deleteFile;
+      public final String logFilePath;
+      public final boolean deleteFile;
 
-      public SyncRequest (String path, boolean deleteFile) {
-        this.path = path;
+      public SyncRequest (String logFilePath, boolean deleteFile) {
+        this.logFilePath = logFilePath;
         this.deleteFile = deleteFile;
       }
     }
