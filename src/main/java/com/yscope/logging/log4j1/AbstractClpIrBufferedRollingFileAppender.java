@@ -40,6 +40,18 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   private ClpIrFileAppender clpIrFileAppender = null;
 
+  public AbstractClpIrBufferedRollingFileAppender () {
+    super();
+  }
+
+  /**
+   * Constructor
+   * @param timeSource The time source that the appender should use
+   */
+  public AbstractClpIrBufferedRollingFileAppender (TimeSource timeSource) {
+    super(timeSource);
+  }
+
   /**
    * Sets the threshold for the file's compressed size at which rollover should
    * be triggered.
@@ -117,8 +129,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   @Override
   protected boolean rolloverRequired () {
-    return clpIrFileAppender.getCompressedSize() > rolloverCompressedSizeThreshold
-        || clpIrFileAppender.getUncompressedSize() > rolloverUncompressedSizeThreshold;
+    return clpIrFileAppender.getCompressedSize() >= rolloverCompressedSizeThreshold
+        || clpIrFileAppender.getUncompressedSize() >= rolloverUncompressedSizeThreshold;
   }
 
   @Override

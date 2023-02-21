@@ -2,7 +2,11 @@ package com.yscope.logging.log4j1;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Comparator;
+import java.util.stream.Stream;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -10,7 +14,9 @@ import org.apache.log4j.PatternLayout;
 import org.apache.log4j.spi.LoggingEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-
+import static java.lang.Thread.sleep;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
 public class TestRollingFileLogAppender {
@@ -18,157 +24,218 @@ public class TestRollingFileLogAppender {
 
   private final String patternLayoutString = "%d{yy/MM/dd HH:mm:ss} %p %c{1}: %m%n";
   private final PatternLayout patternLayout = new PatternLayout(patternLayoutString);
+  private final int flushErrorLevelTimeout = 1;
+  private final int flushInfoLevelTimeout = 2;
+  private final int timeoutCheckPeriod = 10;
   private final String outputDir = "testOutputDir";
-  private final String baseName = "test-file";
 
   /**
-   * Testing uncompressed size rollover is very simple. We shrink the
-   * uncompressed roll-over size to 1 byte will shall trigger one sync and close
-   * event for every new log event appended by the appender.
+   * Tests rollover based on the uncompressed size of the file.
    */
   @Test
   public void testRollingBasedOnUncompressedSize () {
-    RollingFileAppenderTestHarness clpIrRollingLocalFileAppender =
-        generateTestAppender(99999999, 1);
+    // Set the uncompressed rollover size to 1 so that every append triggers a
+    // rollover
+    RollingFileAppenderTestHarness appender = createTestAppender(Integer.MAX_VALUE, 1);
 
-    // Append the 1st message and expect rollover to a new file
-    appendLogEvent(clpIrRollingLocalFileAppender);
-    checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 1, 1000);
+    // Verify rollover after appending every event
+    int expectedNumRollovers = 0;
+    appendLogEvent(0, Level.INFO, appender);
+    ++expectedNumRollovers;
+    validateNumSyncAndCloseEvents(appender, 0, expectedNumRollovers);
+    appendLogEvent(0, Level.INFO, appender);
+    ++expectedNumRollovers;
+    validateNumSyncAndCloseEvents(appender, 0, expectedNumRollovers);
 
-    // Append the 2nd message and expect rollover to a new file
-    appendLogEvent(clpIrRollingLocalFileAppender);
-    checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 2, 1000);
-
-    // Close the appender should sync and close the current opened file
-    clpIrRollingLocalFileAppender.close();
-    checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 3, 1000);
+    // Verify a rollover after closing the appender
+    appender.close();
+    ++expectedNumRollovers;
+    validateNumSyncAndCloseEvents(appender, 0, expectedNumRollovers);
   }
 
   /**
-   * Testing compressed size rollover is harder than uncompressed size because
-   * we do not know the compressed file size prior to flushing the compression
-   * buffer. Rollover also occurs synchronously within the append method of the
-   * appender, thus we need to first append something prior triggering the
-   * rollover on the next append operation.
+   * Tests rollover based on the compressed size of the file.
+   * @throws IOException on I/O error
    */
   @Test
-  public void testRollingBasedOnCompressedSize () throws InterruptedException, IOException {
-    RollingFileAppenderTestHarness clpIrRollingLocalFileAppender =
-        generateTestAppender(1, 9999999);
+  public void testRollingBasedOnCompressedSize () throws IOException {
+    // Set the compressed rollover size to 1 so that a rollover is triggered
+    // once data is output to the file
+    RollingFileAppenderTestHarness appender = createTestAppender(1, Integer.MAX_VALUE);
 
-    // Append the first message, and force manual flush so the next append
-    // shall trigger a rollover event
-    appendLogEvent(clpIrRollingLocalFileAppender);
-    clpIrRollingLocalFileAppender.flush();   // Trigger flush
-    checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 0, 1000);
-    appendLogEvent(clpIrRollingLocalFileAppender);
-    checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 1, 1000);
+    // Verify that an append-flush-append sequence triggers a rollover. We need
+    // the first append and flush to force the compressor to flush the buffered
+    // log event to the output file. The final append is to trigger the
+    // rollover.
+    int expectedNumRollovers = 0;
+    appendLogEvent(0, Level.INFO, appender);
+    assertDoesNotThrow(appender::flush);
+    validateNumSyncAndCloseEvents(appender, 0, expectedNumRollovers);
+    appendLogEvent(0, Level.INFO, appender);
+    ++expectedNumRollovers;
+    validateNumSyncAndCloseEvents(appender, 0, expectedNumRollovers);
 
-    // Since a file rollover event should have occurred, closing the
-    // appender shall close the current empty file
-    clpIrRollingLocalFileAppender.close();
-    checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 2, 1000);
+    // Verify a rollover after closing the appender
+    appender.close();
+    ++expectedNumRollovers;
+    validateNumSyncAndCloseEvents(appender, 0, expectedNumRollovers);
   }
 
   /**
-   * Testing hard timeout is fairly simple by explicitly setting the hard
-   * timeout epoch value to the past.
+   * Tests the hard timeout
    */
   @Test
   public void testHardTimeout () {
-    RollingFileAppenderTestHarness clpIrRollingLocalFileAppender =
-        generateTestAppender(99999999, 99999999);
+    RollingFileAppenderTestHarness appender = createTestAppender(Integer.MAX_VALUE,
+                                                                 Integer.MAX_VALUE);
 
-    // Append a log event then explicitly set hard deadline epoch to the past.
-    // The background flusher shall flush the log event asychronously shortly
-    appendLogEvent(clpIrRollingLocalFileAppender);
-    clpIrRollingLocalFileAppender.setFlushHardTimeoutTimestamp(System.currentTimeMillis() - 999);
-    checkNumSyncEvent(clpIrRollingLocalFileAppender, 1, 1000);
-    checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 0, 1000);
+    // Verify no syncs occur after appending an event
+    int expectedNumSyncs = 0;
+    int expectedNumRollovers = 0;
+    int currentTimestamp = 0;
+    appendLogEvent(currentTimestamp, Level.INFO, appender);
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
 
-    // After closing the file appender, we should have 1 close/delete event
-    clpIrRollingLocalFileAppender.close();
-    checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 1, 1000);
+    // Move time forward and verify that a sync happens
+    currentTimestamp = flushInfoLevelTimeout * 60000;
+    appender.setTime(currentTimestamp);
+    ++expectedNumSyncs;
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
+
+    // Verify a sequence of INFO-ERROR events triggers a sync due to the ERROR
+    // event sooner than the timeout for the INFO event
+    appendLogEvent(currentTimestamp, Level.INFO, appender);
+    appendLogEvent(currentTimestamp, Level.ERROR, appender);
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
+    currentTimestamp += flushErrorLevelTimeout * 60000;
+    appender.setTime(currentTimestamp);
+    ++expectedNumSyncs;
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
+
+    // Verify a rollover after closing the appender
+    appender.close();
+    ++expectedNumRollovers;
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
   }
 
   /**
-   * Testing soft timeout requires us to append multiple log messages in quick
-   * succession and wait until the soft timeout is triggered
-   * @throws InterruptedException
+   * Tests the soft timeout
    */
   @Test
-  public void testSoftTimeout () throws InterruptedException {
-    RollingFileAppenderTestHarness clpIrRollingLocalFileAppender =
-        generateTestAppender(99999999, 99999999);
+  public void testSoftTimeout () {
+    RollingFileAppenderTestHarness appender = createTestAppender(Integer.MAX_VALUE,
+                                                                 Integer.MAX_VALUE);
 
-    // Hard deadline should be in distant future
-    clpIrRollingLocalFileAppender.setFlushHardTimeoutTimestamp(System.currentTimeMillis() + 99999999);
-
-    // We should observe 3 flush events
+    // Append three events and verify syncs only happen after the timeout
+    // triggered by the last event
+    int expectedNumSyncs = 0;
+    int expectedNumRollovers = 0;
+    int currentTimestamp = 0;
     for (int i = 0; i < 3; i++) {
       for (int j = 0; j < 3; j++) {
-        appendLogEvent(clpIrRollingLocalFileAppender);
+        appendLogEvent(i + j, Level.INFO, appender);
       }
-      clpIrRollingLocalFileAppender.setFlushSoftTimeoutTimestamp(System.currentTimeMillis() - 999);
-      checkNumSyncEvent(clpIrRollingLocalFileAppender, i + 1, 1000);
+
+      // Verify no syncs happen up to the point just before the soft timeout
+      appender.setTime(flushInfoLevelTimeout * 1000 - 1 + i);
+      validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
+
+      // Verify a sync happens when the soft timeout is reached
+      appender.setTime(flushInfoLevelTimeout * 1000 + i);
+      currentTimestamp = flushInfoLevelTimeout * 1000 + i;
+      ++expectedNumSyncs;
+      validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
     }
 
-    // After closing the file appender, we should have 1 flush + close event
-    clpIrRollingLocalFileAppender.close();
-    checkNumSyncAndCloseEvent(clpIrRollingLocalFileAppender, 1, 1000);
+    // Verify a sequence of INFO-ERROR events triggers a sync due to the ERROR
+    // event sooner than the timeout for the INFO event
+    appendLogEvent(currentTimestamp, Level.INFO, appender);
+    appendLogEvent(currentTimestamp, Level.ERROR, appender);
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
+    currentTimestamp += flushErrorLevelTimeout * 1000;
+    appender.setTime(currentTimestamp);
+    ++expectedNumSyncs;
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
+
+    // Verify a rollover after closing the appender
+    appender.close();
+    ++expectedNumRollovers;
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
   }
 
   @AfterEach
   public void cleanUpFiles () {
-    Arrays.stream(new File(outputDir).listFiles()).forEach(File::delete);
+    // Delete the output directory tree
+    try (Stream<Path> s = Files.walk(Paths.get(outputDir))) {
+      s.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+    } catch (IOException ex) {
+      fail(ex);
+    }
   }
 
-  private void appendLogEvent (RollingFileAppenderTestHarness appender) {
+  private void appendLogEvent (long timestamp, Level level,
+                               RollingFileAppenderTestHarness appender)
+  {
     String loggerName = TestFileAppender.class.getCanonicalName();
     String message = "Static text, dictVar1, 123, 456.7, dictVar2, 987, 654.3";
-    appender.append(new LoggingEvent(loggerName, logger, Level.INFO, message, null));
+    appender.append(new LoggingEvent(loggerName, logger, timestamp, level, message, null));
   }
 
-  private void checkNumSyncAndCloseEvent (RollingFileAppenderTestHarness appender,
-                                          int numSyncAndCloseEvent, int timeoutMs)
+  /**
+   * Validates that the appender has triggered the given number of sync and
+   * sync-and-close events
+   * @param appender
+   * @param numSyncs
+   * @param numRollovers
+   */
+  private void validateNumSyncAndCloseEvents (RollingFileAppenderTestHarness appender,
+                                              int numSyncs, int numRollovers)
   {
-    long timeout = System.currentTimeMillis() + timeoutMs;
-    while (appender.getNumSyncAndCloseEvent() != numSyncAndCloseEvent) {
-      if (System.currentTimeMillis() > timeout) {
-        fail();
+    long sleepTime = timeoutCheckPeriod * 2;
+    // Sleep so the background threads have a chance to process any syncs and
+    // rollovers
+    assertDoesNotThrow(() -> sleep(sleepTime));
+
+    // Verify the expected num of syncs and rollovers
+    long deadlineTimestamp = System.currentTimeMillis() + sleepTime;
+    while (appender.getNumSyncEvent() != numSyncs) {
+      if (System.currentTimeMillis() >= deadlineTimestamp) {
+        assertEquals(numSyncs, appender.getNumSyncEvent());
+      }
+    }
+    while (appender.getNumSyncAndCloseEvent() != numRollovers) {
+      if (System.currentTimeMillis() >= deadlineTimestamp) {
+        assertEquals(numRollovers, appender.getNumSyncAndCloseEvent());
       }
     }
   }
 
-  private void checkNumSyncEvent (RollingFileAppenderTestHarness appender, int numSyncEvent,
-                                  int timeoutMs)
+  /**
+   * Creates and initializes a RollingFileAppenderTestHarness with the given
+   * rollover sizes
+   * @param compressedRolloverSize
+   * @param uncompressedRolloverSize
+   * @return The created appender
+   */
+  private RollingFileAppenderTestHarness createTestAppender (int compressedRolloverSize,
+                                                             int uncompressedRolloverSize)
   {
-    long timeout = System.currentTimeMillis() + timeoutMs;
-    while (appender.getNumSyncEvent() != numSyncEvent) {
-      if (System.currentTimeMillis() > timeout) {
-        fail();
-      }
-    }
-  }
+    RollingFileAppenderTestHarness appender = new RollingFileAppenderTestHarness();
+    // Parameters from AbstractClpIrBufferedRollingFileAppender
+    appender.setRolloverCompressedSizeThreshold(compressedRolloverSize);
+    appender.setRolloverUncompressedSizeThreshold(uncompressedRolloverSize);
+    appender.setOutputDir(outputDir);
+    appender.setBaseName("test-file");
+    appender.setCloseFrameOnFlush(true);
+    // Parameters from AbstractBufferedRollingFileAppender
+    appender.setCloseFileOnShutdown(true);
+    appender.setLayout(patternLayout);
+    appender.setTimeoutCheckPeriod(timeoutCheckPeriod);
+    String timeoutCsv = "ERROR=" + flushErrorLevelTimeout + ",INFO=" + flushInfoLevelTimeout;
+    appender.setFlushHardTimeoutsInMinutes(timeoutCsv);
+    appender.setFlushSoftTimeoutsInSeconds(timeoutCsv);
 
-  private RollingFileAppenderTestHarness generateTestAppender (int compressedRolloverSize,
-                                                               int uncompressedRolloverSize)
-  {
-    RollingFileAppenderTestHarness clpIrRollingLocalFileAppender =
-        new RollingFileAppenderTestHarness();
-    // Parameters from {@code AbstractClpIrBufferedRollingFileAppender}
-    clpIrRollingLocalFileAppender.setRolloverCompressedSizeThreshold(compressedRolloverSize);
-    clpIrRollingLocalFileAppender.setRolloverUncompressedSizeThreshold(uncompressedRolloverSize);
-    clpIrRollingLocalFileAppender.setOutputDir(outputDir);
-    clpIrRollingLocalFileAppender.setBaseName(baseName);
-    clpIrRollingLocalFileAppender.setCloseFrameOnFlush(true);
-    clpIrRollingLocalFileAppender.setUseFourByteEncoding(true);
-    // Parameters from {@code AbstractBufferedRollingFileAppender}
-    clpIrRollingLocalFileAppender.setCloseFileOnShutdown(true);
-    clpIrRollingLocalFileAppender.setLayout(patternLayout);
-    clpIrRollingLocalFileAppender.setTimeoutCheckPeriod(10);
-
-    clpIrRollingLocalFileAppender.activateOptions();
-    return clpIrRollingLocalFileAppender;
+    appender.activateOptions();
+    return appender;
   }
 }

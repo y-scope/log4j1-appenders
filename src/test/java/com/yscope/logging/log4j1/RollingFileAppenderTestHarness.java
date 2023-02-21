@@ -4,6 +4,18 @@ public class RollingFileAppenderTestHarness extends AbstractClpIrBufferedRolling
   private int numSyncEvent = 0;
   private int numSyncAndCloseEvent = 0;
 
+  public RollingFileAppenderTestHarness () {
+    super(new ManualTimeSource());
+  }
+
+  /**
+   * Sets the current time visible to the appender
+   * @param timestamp The current time
+   */
+  public void setTime (long timestamp) {
+    timeSource.setCurrentTimeInMilliseconds(timestamp);
+  }
+
   public synchronized int getNumSyncAndCloseEvent () {
     return numSyncAndCloseEvent;
   }

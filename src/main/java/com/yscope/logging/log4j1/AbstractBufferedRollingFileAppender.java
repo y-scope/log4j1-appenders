@@ -57,6 +57,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     implements Flushable
 {
   protected String currentLogPath = null;
+  protected final TimeSource timeSource;
 
   // Appender settings, some of which may be set by Log4j through reflection.
   // For descriptions of the properties, see their setters below.
@@ -78,6 +79,16 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   private boolean activated = false;
 
   public AbstractBufferedRollingFileAppender () {
+    this(new SystemTimeSource());
+  }
+
+  /**
+   * Constructor
+   * @param timeSource The time source that the appender should use
+   */
+  public AbstractBufferedRollingFileAppender (TimeSource timeSource) {
+    this.timeSource = timeSource;
+
     // The default flush timeout values below are optimized for high latency
     // remote persistent storage such as object stores or HDFS
     flushHardTimeoutPerLevel.put(Level.FATAL, 5L * 60 * 1000 /* 5 min */);
@@ -354,8 +365,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * @throws IOException on I/O error
    */
   private synchronized void flushAndSyncIfNecessary () throws IOException {
-    long ts = System.currentTimeMillis();
-    if (ts > flushSoftTimeoutTimestamp || ts > flushHardTimeoutTimestamp) {
+    long ts = timeSource.getCurrentTimeInMilliseconds();
+    if (ts >= flushSoftTimeoutTimestamp || ts >= flushHardTimeoutTimestamp) {
       flush();
       backgroundSyncThread.addSyncRequest(currentLogPath, false);
       resetFreshnessTimeouts();
