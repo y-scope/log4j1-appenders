@@ -8,7 +8,8 @@ import org.apache.log4j.spi.LoggingEvent;
 /**
  * This class extends {@link AbstractBufferedRollingFileAppender} to append to
  * CLP compressed IR-stream files and rollover based on the amount of
- * uncompressed and compressed data written to a file.
+ * uncompressed and compressed data written to a file. Derived classes are
+ * expected to handle synchronization (e.g., uploading to remote storage).
  * <p></p>
  * Rollover based on the amount of uncompressed data written to file allows us
  * to ensure that the file remains manageable when decompressed for viewing,

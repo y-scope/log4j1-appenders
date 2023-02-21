@@ -1,5 +1,9 @@
 package com.yscope.logging.log4j1;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PatternLayout;
@@ -7,14 +11,10 @@ import org.apache.log4j.spi.LoggingEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.Arrays;
-
 import static org.junit.jupiter.api.Assertions.fail;
 
 public class TestRollingFileLogAppender {
-  private Logger logger = Logger.getLogger(TestFileAppender.class);
+  private static final Logger logger = Logger.getLogger(TestFileAppender.class);
 
   private final String patternLayoutString = "%d{yy/MM/dd HH:mm:ss} %p %c{1}: %m%n";
   private final PatternLayout patternLayout = new PatternLayout(patternLayoutString);
