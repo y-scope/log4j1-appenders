@@ -30,6 +30,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   private String baseName;
   private String outputDir;
   // CLP streaming compression parameters
+  private int compressionLevel = 3;
   private boolean closeFrameOnFlush = true;
   private boolean useFourByteEncoding = false;
   private long rolloverCompressedSizeThreshold = 16 * 1024 * 1024;  // Bytes
@@ -51,6 +52,14 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
    */
   public AbstractClpIrBufferedRollingFileAppender (TimeSource timeSource) {
     super(timeSource);
+  }
+
+  /**
+   * Sets the compression level for the appender's streaming compressor
+   * @param compressionLevel The compression level between 1 and 22
+   */
+  public void setCompressionLevel(int compressionLevel) {
+    this.compressionLevel = compressionLevel;
   }
 
   /**
@@ -120,7 +129,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   public void activateOptionsHook () throws IOException {
     computeLogFilePath(System.currentTimeMillis());
     clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useFourByteEncoding,
-                                              closeFrameOnFlush, 3);
+                                              closeFrameOnFlush, compressionLevel);
   }
 
   @Override
