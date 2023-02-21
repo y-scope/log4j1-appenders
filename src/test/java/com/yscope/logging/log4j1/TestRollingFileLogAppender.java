@@ -36,7 +36,7 @@ public class TestRollingFileLogAppender {
   public void testRollingBasedOnUncompressedSize () {
     // Set the uncompressed rollover size to 1 so that every append triggers a
     // rollover
-    RollingFileAppenderTestHarness appender = createTestAppender(Integer.MAX_VALUE, 1);
+    RollingFileTestAppender appender = createTestAppender(Integer.MAX_VALUE, 1);
 
     // Verify rollover after appending every event
     int expectedNumRollovers = 0;
@@ -58,10 +58,10 @@ public class TestRollingFileLogAppender {
    * @throws IOException on I/O error
    */
   @Test
-  public void testRollingBasedOnCompressedSize () throws IOException {
+  public void testRollingBasedOnCompressedSize () {
     // Set the compressed rollover size to 1 so that a rollover is triggered
     // once data is output to the file
-    RollingFileAppenderTestHarness appender = createTestAppender(1, Integer.MAX_VALUE);
+    RollingFileTestAppender appender = createTestAppender(1, Integer.MAX_VALUE);
 
     // Verify that an append-flush-append sequence triggers a rollover. We need
     // the first append and flush to force the compressor to flush the buffered
@@ -86,8 +86,7 @@ public class TestRollingFileLogAppender {
    */
   @Test
   public void testHardTimeout () {
-    RollingFileAppenderTestHarness appender = createTestAppender(Integer.MAX_VALUE,
-                                                                 Integer.MAX_VALUE);
+    RollingFileTestAppender appender = createTestAppender(Integer.MAX_VALUE, Integer.MAX_VALUE);
 
     // Verify no syncs occur after appending an event
     int expectedNumSyncs = 0;
@@ -123,8 +122,7 @@ public class TestRollingFileLogAppender {
    */
   @Test
   public void testSoftTimeout () {
-    RollingFileAppenderTestHarness appender = createTestAppender(Integer.MAX_VALUE,
-                                                                 Integer.MAX_VALUE);
+    RollingFileTestAppender appender = createTestAppender(Integer.MAX_VALUE, Integer.MAX_VALUE);
 
     // Append three events and verify syncs only happen after the timeout
     // triggered by the last event
@@ -173,9 +171,7 @@ public class TestRollingFileLogAppender {
     }
   }
 
-  private void appendLogEvent (long timestamp, Level level,
-                               RollingFileAppenderTestHarness appender)
-  {
+  private void appendLogEvent (long timestamp, Level level, RollingFileTestAppender appender) {
     String loggerName = TestFileAppender.class.getCanonicalName();
     String message = "Static text, dictVar1, 123, 456.7, dictVar2, 987, 654.3";
     appender.append(new LoggingEvent(loggerName, logger, timestamp, level, message, null));
@@ -188,8 +184,8 @@ public class TestRollingFileLogAppender {
    * @param numSyncs
    * @param numRollovers
    */
-  private void validateNumSyncAndCloseEvents (RollingFileAppenderTestHarness appender,
-                                              int numSyncs, int numRollovers)
+  private void validateNumSyncAndCloseEvents (RollingFileTestAppender appender, int numSyncs,
+                                              int numRollovers)
   {
     long sleepTime = timeoutCheckPeriod * 2;
     // Sleep so the background threads have a chance to process any syncs and
@@ -198,29 +194,29 @@ public class TestRollingFileLogAppender {
 
     // Verify the expected num of syncs and rollovers
     long deadlineTimestamp = System.currentTimeMillis() + sleepTime;
-    while (appender.getNumSyncEvent() != numSyncs) {
+    while (appender.getNumSyncs() != numSyncs) {
       if (System.currentTimeMillis() >= deadlineTimestamp) {
-        assertEquals(numSyncs, appender.getNumSyncEvent());
+        assertEquals(numSyncs, appender.getNumSyncs());
       }
     }
-    while (appender.getNumSyncAndCloseEvent() != numRollovers) {
+    while (appender.getNumRollovers() != numRollovers) {
       if (System.currentTimeMillis() >= deadlineTimestamp) {
-        assertEquals(numRollovers, appender.getNumSyncAndCloseEvent());
+        assertEquals(numRollovers, appender.getNumRollovers());
       }
     }
   }
 
   /**
-   * Creates and initializes a RollingFileAppenderTestHarness with the given
+   * Creates and initializes a RollingFileTestAppender with the given
    * rollover sizes
    * @param compressedRolloverSize
    * @param uncompressedRolloverSize
    * @return The created appender
    */
-  private RollingFileAppenderTestHarness createTestAppender (int compressedRolloverSize,
-                                                             int uncompressedRolloverSize)
+  private RollingFileTestAppender createTestAppender (int compressedRolloverSize,
+                                                      int uncompressedRolloverSize)
   {
-    RollingFileAppenderTestHarness appender = new RollingFileAppenderTestHarness();
+    RollingFileTestAppender appender = new RollingFileTestAppender();
     // Parameters from AbstractClpIrBufferedRollingFileAppender
     appender.setRolloverCompressedSizeThreshold(compressedRolloverSize);
     appender.setRolloverUncompressedSizeThreshold(uncompressedRolloverSize);

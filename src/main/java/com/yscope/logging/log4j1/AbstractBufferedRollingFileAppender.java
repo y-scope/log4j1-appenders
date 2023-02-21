@@ -313,7 +313,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   /**
    * Synchronizes the log file (e.g. by uploading it to remote storage).
    * @param path Path of the log file to sync
-   * @param deleteFile Whether the log file can be deleted after syncing.
+   * @param deleteFile Whether the log file can be deleted after syncing
    */
   protected abstract void sync (String path, boolean deleteFile) throws Exception;
 
