@@ -38,6 +38,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   private long compressedSizeSinceLastRollover = 0L;  // Bytes
   private long uncompressedSizeSinceLastRollover = 0L;  // Bytes
 
+  private String currentLogFilename;
   private ClpIrFileAppender clpIrFileAppender = null;
 
   public AbstractClpIrBufferedRollingFileAppender () {
@@ -151,13 +152,18 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     clpIrFileAppender.flush();
   }
 
+  protected String getCurrentLogFilename () {
+    return currentLogFilename;
+  }
+
   /**
-   * Computes the current log file path which includes the given rollover
-   * timestamp
+   * Computes the current log file name and path, which includes the given
+   * rollover timestamp
    * @param lastRolloverTimestamp The approximate timestamp of the last rollover
    */
   private void computeLogFilePath (long lastRolloverTimestamp) {
-    currentLogPath = Paths.get(outputDir, baseName + "." + lastRolloverTimestamp
-        + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION).toString();
+    currentLogFilename = baseName + "." + lastRolloverTimestamp
+        + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION;
+    currentLogPath = Paths.get(outputDir, currentLogFilename).toString();
   }
 }
