@@ -78,12 +78,16 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   private boolean activated = false;
 
+  /**
+   * Default constructor
+   */
   public AbstractBufferedRollingFileAppender () {
     this(new SystemTimeSource());
   }
 
   /**
-   * Constructor
+   * Constructor to enable the ability to specify a TimeSource, such as those
+   * that can be controlled manually to facilitate unit testing
    * @param timeSource The time source that the appender should use
    */
   public AbstractBufferedRollingFileAppender (TimeSource timeSource) {
@@ -128,7 +132,17 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   public void setFlushHardTimeoutsInMinutes (String csvTimeouts) {
     for (String token : csvTimeouts.split(",")) {
       String[] kv = token.split("=");
-      flushHardTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 60 * 1000);
+      if (isSupportedLogLevel(kv[0])) {
+        try {
+          flushHardTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 60 * 1000);
+        } catch (UnsupportedOperationException ex) {
+          logError("Failed to set hard flush timeout value " +
+              "for the following verbosity level: " + kv[1]);
+        }
+      } else {
+        logError("Failed to set hard flush timeout " +
+            "for the following unsupported verbosity level: " + kv[0]);
+      }
     }
   }
 
@@ -141,7 +155,17 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   public void setFlushSoftTimeoutsInSeconds (String csvTimeouts) {
     for (String token : csvTimeouts.split(",")) {
       String[] kv = token.split("=");
-      flushSoftTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 1000);
+      if (isSupportedLogLevel(kv[0])) {
+        try {
+          flushSoftTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 1000);
+        } catch (UnsupportedOperationException ex) {
+          logError("Failed to set soft flush timeout value " +
+              "for the following verbosity level: " + kv[1]);
+        }
+      } else {
+        logError("Failed to set soft flush timeout " +
+            "for the following unsupported verbosity level: " + kv[0]);
+      }
     }
   }
 
@@ -298,6 +322,18 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * @param event The log event
    */
   protected abstract void appendHook (LoggingEvent event) throws Exception;
+
+  /**
+   * Tests if log level is supported by this appender configuration
+   * @param level string passed in from configuration parameter
+   * @return true if supported, false otherwise
+   */
+  public boolean isSupportedLogLevel(String level) {
+    // Note that the Level class is able to automatically parses a candidate
+    // level string into a log4j level, and if it cannot, it will assign the
+    // log4j level as to the default "INFO" level.
+    return Level.toLevel(level) != Level.INFO || level.equals("INFO");
+  }
 
   /**
    * Resets the soft/hard freshness timeouts.
