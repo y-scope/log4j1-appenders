@@ -137,7 +137,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
           flushHardTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 60 * 1000);
         } catch (UnsupportedOperationException ex) {
           logError("Failed to set hard flush timeout value " +
-              "for the following verbosity level: " + kv[1]);
+              "for the " + kv[0] + " verbosity level: " + kv[1]);
         }
       } else {
         logError("Failed to set hard flush timeout " +
@@ -160,7 +160,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
           flushSoftTimeoutPerLevel.put(Level.toLevel(kv[0]), Long.parseLong(kv[1]) * 1000);
         } catch (UnsupportedOperationException ex) {
           logError("Failed to set soft flush timeout value " +
-              "for the following verbosity level: " + kv[1]);
+              "for the " + kv[0] + " verbosity level: " + kv[1]);
         }
       } else {
         logError("Failed to set soft flush timeout " +
