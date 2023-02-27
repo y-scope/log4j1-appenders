@@ -2,11 +2,11 @@ package com.yscope.logging.log4j1;
 
 import java.util.ArrayList;
 import java.util.List;
+
 import org.apache.log4j.EnhancedPatternLayout;
 import org.apache.log4j.Layout;
 import org.apache.log4j.PatternLayout;
 import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 

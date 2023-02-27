@@ -1,10 +1,10 @@
 package com.yscope.logging.log4j1;
 
-import org.apache.log4j.Layout;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+
+import org.apache.log4j.Layout;
 
 public class Utils {
   /**
