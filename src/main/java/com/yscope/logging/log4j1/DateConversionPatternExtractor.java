@@ -1,6 +1,7 @@
 package com.yscope.logging.log4j1;
 
 import java.util.ArrayList;
+
 import org.apache.log4j.EnhancedPatternLayout;
 import org.apache.log4j.Layout;
 import org.apache.log4j.PatternLayout;

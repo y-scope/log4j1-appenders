@@ -1,11 +1,23 @@
 package com.yscope.logging.log4j1;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.Flushable;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.ZonedDateTime;
+
 import com.github.luben.zstd.Zstd;
 import com.github.luben.zstd.ZstdOutputStream;
 import com.yscope.clp.irstream.AbstractClpIrOutputStream;
 import com.yscope.clp.irstream.EightByteClpIrOutputStream;
 import com.yscope.clp.irstream.FourByteClpIrOutputStream;
-import java.nio.file.Paths;
 import org.apache.commons.io.output.CountingOutputStream;
 import org.apache.log4j.EnhancedPatternLayout;
 import org.apache.log4j.HTMLLayout;
@@ -15,12 +27,6 @@ import org.apache.log4j.SimpleLayout;
 import org.apache.log4j.spi.ErrorCode;
 import org.apache.log4j.spi.LoggingEvent;
 import org.apache.log4j.xml.XMLLayout;
-
-import java.io.*;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.time.ZonedDateTime;
 
 /**
  * A Log4j appender that writes log events into a Zstandard-compressed CLP IR
