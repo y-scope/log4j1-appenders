@@ -1,6 +1,7 @@
 package com.yscope.logging.log4j1;
 
 import java.util.Date;
+
 import org.apache.log4j.AppenderSkeleton;
 import org.apache.log4j.helpers.ISO8601DateFormat;
 import org.apache.log4j.helpers.LogLog;
