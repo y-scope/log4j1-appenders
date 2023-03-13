@@ -121,7 +121,7 @@ public class TestRollingFileLogAppender {
    * Tests the soft timeout
    */
   @Test
-  public void testSoftTimeout () {
+  public void testSoftTimeout () throws InterruptedException {
     RollingFileTestAppender appender = createTestAppender(Integer.MAX_VALUE, Integer.MAX_VALUE);
 
     // Append three events and verify syncs only happen after the timeout
@@ -129,21 +129,20 @@ public class TestRollingFileLogAppender {
     int expectedNumSyncs = 0;
     int expectedNumRollovers = 0;
     int currentTimestamp = 0;
-    for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-        appendLogEvent(i + j, Level.INFO, appender);
-      }
-
-      // Verify no syncs happen up to the point just before the soft timeout
-      appender.setTime(flushInfoLevelTimeout * 1000 - 1 + i);
-      validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
-
-      // Verify a sync happens when the soft timeout is reached
-      appender.setTime(flushInfoLevelTimeout * 1000 + i);
-      currentTimestamp = flushInfoLevelTimeout * 1000 + i;
-      ++expectedNumSyncs;
-      validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
+    int iterations = 3;
+    for (int i = 0; i < iterations; i++) {
+      appendLogEvent(i, Level.INFO, appender);
     }
+
+    // Verify no syncs happen up to the point just before the soft timeout
+    appender.setTime(flushInfoLevelTimeout * 1000 + iterations - 2);
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
+
+    // Verify a sync happens when the soft timeout is reached
+    currentTimestamp = flushInfoLevelTimeout * 1000 + iterations - 1;
+    appender.setTime(currentTimestamp);
+    ++expectedNumSyncs;
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
 
     // Verify a sequence of INFO-ERROR events triggers a sync due to the ERROR
     // event sooner than the timeout for the INFO event
