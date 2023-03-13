@@ -33,10 +33,10 @@ import org.apache.log4j.spi.LoggingEvent;
  * synchronized. Specifically, this class maintains a soft and hard timeout per
  * log level:
  * <ul>
- *   <li><b>hard timeout</b> - the maximum delay between when a log event is
- *   generated and the file should be flushed and synchronized.</li>
- *   <li><b>soft timeout</b> - same as the hard timeout except it gets reset
- *   every time a new log event with the same log level is generated.</li>
+ *   <li><b>hard timeout</b> - the maximum elapsed time between generating a
+ *   log event and the file being flushed and synchronized.</li>
+ *   <li><b>soft timeout</b> - the maximum elapsed time to wait for a new log
+ *   event to be generated before flushing and synchronizing the file</li>
  * </ul>
  * The shortest timeout in each log level determines when a log file will be
  * flushed and synchronized.
@@ -68,9 +68,10 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   private long flushHardTimeoutTimestamp;
   private long flushSoftTimeoutTimestamp;
-  // The maximum soft timeout allowed. This is used while the app is shutting
-  // down to increase the likelihood of flushing before the app finishes
-  // shutting down.
+  // The maximum soft timeout allowed. If users wish to continue log collection
+  // and synchronization after appender is interrupted, this value will be
+  // artificiality lowered to increase the likelihood of flushing before the
+  // app terminates.
   private long flushMaximumSoftTimeout;
 
   private final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
@@ -363,8 +364,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
     flushMaximumSoftTimeout = Math.min(flushMaximumSoftTimeout,
                                        flushSoftTimeoutPerLevel.get(level));
-    timeoutTimestamp = loggingEvent.timeStamp + flushMaximumSoftTimeout;
-    flushSoftTimeoutTimestamp = Math.min(flushSoftTimeoutTimestamp, timeoutTimestamp);
+    flushSoftTimeoutTimestamp = loggingEvent.timeStamp + flushMaximumSoftTimeout;
   }
 
   /**
