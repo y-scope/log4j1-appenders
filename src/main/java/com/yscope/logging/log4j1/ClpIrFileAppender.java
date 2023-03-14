@@ -1,16 +1,12 @@
 package com.yscope.logging.log4j1;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.Flushable;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.time.ZonedDateTime;
 
 import com.github.luben.zstd.Zstd;
@@ -27,6 +23,8 @@ import org.apache.log4j.SimpleLayout;
 import org.apache.log4j.spi.ErrorCode;
 import org.apache.log4j.spi.LoggingEvent;
 import org.apache.log4j.xml.XMLLayout;
+
+import static com.yscope.logging.log4j1.Utils.createOutputFile;
 
 /**
  * A Log4j appender that writes log events into a Zstandard-compressed CLP IR
@@ -422,29 +420,5 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
 
     uncompressedSizeInBytes += timestampPattern.getBytes(StandardCharsets.ISO_8859_1).length;
     uncompressedSizeInBytes += timeZoneId.length();
-  }
-
-  /**
-   * Creates and opens the output file and file output stream.
-   * @param filePath
-   * @return The file output stream
-   * @throws IOException on I/O error
-   */
-  private FileOutputStream createOutputFile (String filePath) throws IOException {
-    FileOutputStream fileOutputStream;
-    try {
-      // append = false since we don't support appending to an existing file
-      fileOutputStream = new FileOutputStream(filePath, false);
-    } catch (FileNotFoundException ex) {
-      // Create the parent directory if necessary
-      String parentPath = new File(filePath).getParent();
-      if (null == parentPath) {
-        throw ex;
-      }
-      Files.createDirectories(Paths.get(parentPath));
-
-      fileOutputStream = new FileOutputStream(filePath, false);
-    }
-    return fileOutputStream;
   }
 }
