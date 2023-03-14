@@ -13,7 +13,7 @@ import org.apache.log4j.Layout;
 
 public class Utils {
   /**
-   * Creates and opens the output file and file output stream.
+   * Creates and opens an output file and file output stream.
    * @param filePath
    * @return The file output stream
    * @throws IOException on I/O error
