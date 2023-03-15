@@ -59,7 +59,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   // Appender settings, some of which may be set by Log4j through reflection.
   // For descriptions of the properties, see their setters below.
   protected String baseName = null;
-  protected String currentLogPath = null;
+  protected String currentLogFilePath = null;
   protected final TimeSource timeSource;
   protected long lastRolloverTimestamp;
 

@@ -119,8 +119,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   @Override
   public void activateOptionsHook () throws IOException {
     currentLogFilename = computeLogFileName(baseName, System.currentTimeMillis());
-    computeLogFilePath(currentLogFilename);
-    clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useFourByteEncoding,
+    currentLogFilePath = computeLogFilePath(currentLogFilename);
+    clpIrFileAppender = new ClpIrFileAppender(currentLogFilePath, layout, useFourByteEncoding,
                                               closeFrameOnFlush, compressionLevel);
   }
 
@@ -140,8 +140,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
     uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
     currentLogFilename = computeLogFileName(baseName, lastRolloverTimestamp);
-    computeLogFilePath(currentLogFilename);
-    clpIrFileAppender.startNewFile(currentLogPath);
+    currentLogFilePath = computeLogFilePath(currentLogFilename);
+    clpIrFileAppender.startNewFile(currentLogFilePath);
   }
 
   @Override
@@ -162,7 +162,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
    * Compute the current log file name which includes the given rollover timestamp
    * @param baseName The base name of the log file name
    * @param lastRolloverTimestamp The approximate timestamp of the last rollover
-   * @return
+   * @return log file name
    */
   protected String computeLogFileName (String baseName, long lastRolloverTimestamp) {
     return baseName + "." + lastRolloverTimestamp + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION;
@@ -172,8 +172,9 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
    * Computes the current log file name and path, which includes the given
    * rollover timestamp
    * @param currentLogFilename of the log file
+   * @return log file path
    */
-  protected void computeLogFilePath (String currentLogFilename) {
-    currentLogPath = Paths.get(outputDir, currentLogFilename).toString();
+  protected String computeLogFilePath (String currentLogFilename) {
+    return Paths.get(outputDir, currentLogFilename).toString();
   }
 }
