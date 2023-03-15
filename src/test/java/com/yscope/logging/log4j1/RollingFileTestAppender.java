@@ -33,11 +33,13 @@ public class RollingFileTestAppender extends AbstractClpIrBufferedRollingFileApp
   /**
    * Tracks the number of syncs and rollovers
    * @param baseName {@inheritDoc}
-   * @param lastRolloverTimestamp {@inheritDoc}
+   * @param logRolloverTimestamp {@inheritDoc}
    * @param deleteFile {@inheritDoc}
    */
   @Override
-  protected synchronized void sync (String baseName, long lastRolloverTimestamp, boolean deleteFile) {
+  protected synchronized void sync (String baseName, long logRolloverTimestamp,
+                                    boolean deleteFile)
+  {
     if (deleteFile) {
       numRollovers += 1;
     } else {
