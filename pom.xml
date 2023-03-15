@@ -6,7 +6,7 @@
 
   <groupId>com.yscope.logging</groupId>
   <artifactId>log4j1-appenders</artifactId>
-  <version>0.2.0-SNAPSHOT</version>
+  <version>0.1.3</version>
   <packaging>jar</packaging>
 
   <name>Log4j v1 Appenders</name>
