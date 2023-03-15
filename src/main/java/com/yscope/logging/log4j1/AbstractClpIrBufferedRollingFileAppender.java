@@ -27,7 +27,6 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   // Appender settings, some of which may be set by Log4j through reflection.
   // For descriptions of the properties, see their setters below.
-  private String baseName;
   private String outputDir;
   // CLP streaming compression parameters
   private int compressionLevel = 3;
@@ -39,7 +38,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   private long compressedSizeSinceLastRollover = 0L;  // Bytes
   private long uncompressedSizeSinceLastRollover = 0L;  // Bytes
 
-  private String currentLogFilename;
+  // This instance variable should be up-to-date at all times
   private ClpIrFileAppender clpIrFileAppender = null;
 
   public AbstractClpIrBufferedRollingFileAppender () {
@@ -96,13 +95,6 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   /**
-   * @param baseName The base filename for log files
-   */
-  public void setBaseName (String baseName) {
-    this.baseName = baseName;
-  }
-
-  /**
    * @param closeFrameOnFlush Whether to close the compressor's frame on flush
    */
   public void setCloseFrameOnFlush (boolean closeFrameOnFlush) {
@@ -127,8 +119,9 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   @Override
   public void activateOptionsHook () throws IOException {
-    computeLogFilePath(System.currentTimeMillis());
-    clpIrFileAppender = new ClpIrFileAppender(currentLogPath, layout, useFourByteEncoding,
+    String fileName = computeLogFileName(getBaseName(), System.currentTimeMillis());
+    String filePath = computeLogFilePath(fileName);
+    clpIrFileAppender = new ClpIrFileAppender(filePath, layout, useFourByteEncoding,
                                               closeFrameOnFlush, compressionLevel);
   }
 
@@ -147,8 +140,9 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   protected void startNewLogFile (long lastRolloverTimestamp) throws IOException {
     compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
     uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
-    computeLogFilePath(lastRolloverTimestamp);
-    clpIrFileAppender.startNewFile(currentLogPath);
+    String fileName = computeLogFileName(getBaseName(), lastRolloverTimestamp);
+    String filePath = computeLogFilePath(fileName);
+    clpIrFileAppender.startNewFile(filePath);
   }
 
   @Override
@@ -161,18 +155,17 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     clpIrFileAppender.flush();
   }
 
-  protected String getCurrentLogFilename () {
-    return currentLogFilename;
+  @Override
+  protected String computeLogFileName (String baseName, long logRolloverTimestamp) {
+    return baseName + "." + logRolloverTimestamp + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION;
   }
 
   /**
-   * Computes the current log file name and path, which includes the given
-   * rollover timestamp
-   * @param lastRolloverTimestamp The approximate timestamp of the last rollover
+   * Computes a path for the provided log file name
+   * @param logFileName
+   * @return The computed log file path
    */
-  private void computeLogFilePath (long lastRolloverTimestamp) {
-    currentLogFilename = baseName + "." + lastRolloverTimestamp
-        + CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION;
-    currentLogPath = Paths.get(outputDir, currentLogFilename).toString();
+  protected String computeLogFilePath (String logFileName) {
+    return Paths.get(outputDir, logFileName).toString();
   }
 }
