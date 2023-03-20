@@ -33,7 +33,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   private boolean closeFrameOnFlush = true;
   private boolean useFourByteEncoding = false;
   private long rolloverCompressedSizeThreshold = 16 * 1024 * 1024;  // Bytes
-  private long rolloverUncompressedSizeThreshold = 2L * 1024 * 1024 * 1024;  // Bytes
+  private long rolloverUncompressedSizeThreshold = 1024L * 1024 * 1024;  // Bytes
 
   private long compressedSizeSinceLastRollover = 0L;  // Bytes
   private long uncompressedSizeSinceLastRollover = 0L;  // Bytes
