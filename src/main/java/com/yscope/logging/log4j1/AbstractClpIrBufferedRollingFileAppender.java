@@ -118,8 +118,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  public void activateOptionsHook (long lastRolloverTimestamp) throws IOException {
-    String fileName = computeLogFileName(getBaseName(), lastRolloverTimestamp);
+  public void activateOptionsHook (long currentTimestamp) throws IOException {
+    String fileName = computeLogFileName(getBaseName(), currentTimestamp);
     String filePath = computeLogFilePath(fileName);
     clpIrFileAppender = new ClpIrFileAppender(filePath, layout, useFourByteEncoding,
                                               closeFrameOnFlush, compressionLevel);
@@ -137,10 +137,10 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  protected void startNewLogFile (long lastRolloverTimestamp) throws IOException {
+  protected void startNewLogFile (long lastEventTimestamp) throws IOException {
     compressedSizeSinceLastRollover += clpIrFileAppender.getCompressedSize();
     uncompressedSizeSinceLastRollover += clpIrFileAppender.getUncompressedSize();
-    String fileName = computeLogFileName(getBaseName(), lastRolloverTimestamp);
+    String fileName = computeLogFileName(getBaseName(), lastEventTimestamp);
     String filePath = computeLogFilePath(fileName);
     clpIrFileAppender.startNewFile(filePath);
   }

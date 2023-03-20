@@ -214,10 +214,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
     resetFreshnessTimeouts();
 
-    // Set the first rollover timestamp to the current time
-    lastRolloverTimestamp = System.currentTimeMillis();
-
     try {
+      // Set the first rollover timestamp to the current time
+      lastRolloverTimestamp = System.currentTimeMillis();
       activateOptionsHook(lastRolloverTimestamp);
       if (closeFileOnShutdown) {
         Runtime.getRuntime().addShutdownHook(new Thread(this::close));
@@ -308,9 +307,10 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Activates appender options for derived appenders.
-   * @param lastRolloverTimestamp Timestamp which the first rotated log begins
+   * @param currentTimestamp Current timestamp (useful for naming the first log
+   * file)
    */
-  protected abstract void activateOptionsHook (long lastRolloverTimestamp) throws Exception;
+  protected abstract void activateOptionsHook (long currentTimestamp) throws Exception;
 
   /**
    * Closes the derived appender. Once closed, the appender cannot be reopened.
@@ -324,10 +324,10 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Starts a new log file.
-   * @param lastRolloverTimestamp Timestamp of the last event that was logged
+   * @param lastEventTimestamp Timestamp of the last event that was logged
    * before calling this method (useful for naming the new log file).
    */
-  protected abstract void startNewLogFile (long lastRolloverTimestamp) throws Exception;
+  protected abstract void startNewLogFile (long lastEventTimestamp) throws Exception;
 
   /**
    * Synchronizes a log file with remote storage. Note that this file may not
