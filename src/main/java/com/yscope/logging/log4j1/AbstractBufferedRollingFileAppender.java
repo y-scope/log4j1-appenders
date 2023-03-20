@@ -198,7 +198,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * <p></p>
    * This method is {@code final} to ensure it is not overridden by derived
    * classes since this base class needs to perform actions before/after the
-   * derived class' {@link #activateOptionsHook()} method.
+   * derived class' {@link #activateOptionsHook(long)} method.
    */
   @Override
   public final void activateOptions () {
@@ -213,8 +213,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     }
 
     resetFreshnessTimeouts();
+
     try {
-      activateOptionsHook();
+      // Set the first rollover timestamp to the current time
+      lastRolloverTimestamp = System.currentTimeMillis();
+      activateOptionsHook(lastRolloverTimestamp);
       if (closeFileOnShutdown) {
         Runtime.getRuntime().addShutdownHook(new Thread(this::close));
       }
@@ -286,7 +289,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       } else {
         backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, true);
         resetFreshnessTimeouts();
-        startNewLogFile(loggingEvent.getTimeStamp());
+        lastRolloverTimestamp = loggingEvent.getTimeStamp();
+        startNewLogFile(lastRolloverTimestamp);
       }
     } catch (Exception ex) {
       getErrorHandler().error("Failed to write log event.", ex, ErrorCode.WRITE_FAILURE);
@@ -303,8 +307,10 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Activates appender options for derived appenders.
+   * @param currentTimestamp Current timestamp (useful for naming the first log
+   * file)
    */
-  protected abstract void activateOptionsHook () throws Exception;
+  protected abstract void activateOptionsHook (long currentTimestamp) throws Exception;
 
   /**
    * Closes the derived appender. Once closed, the appender cannot be reopened.
@@ -318,10 +324,10 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Starts a new log file.
-   * @param lastRolloverTimestamp Timestamp of the last event that was logged
+   * @param lastEventTimestamp Timestamp of the last event that was logged
    * before calling this method (useful for naming the new log file).
    */
-  protected abstract void startNewLogFile (long lastRolloverTimestamp) throws Exception;
+  protected abstract void startNewLogFile (long lastEventTimestamp) throws Exception;
 
   /**
    * Synchronizes a log file with remote storage. Note that this file may not
