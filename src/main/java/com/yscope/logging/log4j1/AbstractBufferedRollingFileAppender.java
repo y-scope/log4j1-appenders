@@ -110,9 +110,6 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     flushSoftTimeoutPerLevel.put(Level.INFO, 3L * 60 * 1000 /* 3 min */);
     flushSoftTimeoutPerLevel.put(Level.DEBUG, 3L * 60 * 1000 /* 3 min */);
     flushSoftTimeoutPerLevel.put(Level.TRACE, 3L * 60 * 1000 /* 3 min */);
-
-    // Set the first rollover timestamp to the current time
-    lastRolloverTimestamp = System.currentTimeMillis();
   }
 
   /**
@@ -201,7 +198,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * <p></p>
    * This method is {@code final} to ensure it is not overridden by derived
    * classes since this base class needs to perform actions before/after the
-   * derived class' {@link #activateOptionsHook()} method.
+   * derived class' {@link #activateOptionsHook(long)} method.
    */
   @Override
   public final void activateOptions () {
@@ -216,8 +213,12 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     }
 
     resetFreshnessTimeouts();
+
+    // Set the first rollover timestamp to the current time
+    lastRolloverTimestamp = System.currentTimeMillis();
+
     try {
-      activateOptionsHook();
+      activateOptionsHook(lastRolloverTimestamp);
       if (closeFileOnShutdown) {
         Runtime.getRuntime().addShutdownHook(new Thread(this::close));
       }
@@ -307,8 +308,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Activates appender options for derived appenders.
+   * @param lastRolloverTimestamp Timestamp which the first rotated log begins
    */
-  protected abstract void activateOptionsHook () throws Exception;
+  protected abstract void activateOptionsHook (long lastRolloverTimestamp) throws Exception;
 
   /**
    * Closes the derived appender. Once closed, the appender cannot be reopened.

@@ -57,7 +57,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
    * Sets the compression level for the appender's streaming compressor
    * @param compressionLevel The compression level between 1 and 22
    */
-  public void setCompressionLevel(int compressionLevel) {
+  public void setCompressionLevel (int compressionLevel) {
     this.compressionLevel = compressionLevel;
   }
 
@@ -118,7 +118,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   }
 
   @Override
-  public void activateOptionsHook () throws IOException {
+  public void activateOptionsHook (long lastRolloverTimestamp) throws IOException {
     String fileName = computeLogFileName(getBaseName(), lastRolloverTimestamp);
     String filePath = computeLogFilePath(fileName);
     clpIrFileAppender = new ClpIrFileAppender(filePath, layout, useFourByteEncoding,
