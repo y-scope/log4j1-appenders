@@ -110,6 +110,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     flushSoftTimeoutPerLevel.put(Level.INFO, 3L * 60 * 1000 /* 3 min */);
     flushSoftTimeoutPerLevel.put(Level.DEBUG, 3L * 60 * 1000 /* 3 min */);
     flushSoftTimeoutPerLevel.put(Level.TRACE, 3L * 60 * 1000 /* 3 min */);
+
+    // Set the first rollover timestamp to the current time
+    lastRolloverTimestamp = System.currentTimeMillis();
   }
 
   /**
@@ -286,7 +289,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       } else {
         backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, true);
         resetFreshnessTimeouts();
-        startNewLogFile(loggingEvent.getTimeStamp());
+        lastRolloverTimestamp = loggingEvent.getTimeStamp();
+        startNewLogFile(lastRolloverTimestamp);
       }
     } catch (Exception ex) {
       getErrorHandler().error("Failed to write log event.", ex, ErrorCode.WRITE_FAILURE);

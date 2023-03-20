@@ -119,7 +119,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   @Override
   public void activateOptionsHook () throws IOException {
-    String fileName = computeLogFileName(getBaseName(), System.currentTimeMillis());
+    String fileName = computeLogFileName(getBaseName(), lastRolloverTimestamp);
     String filePath = computeLogFilePath(fileName);
     clpIrFileAppender = new ClpIrFileAppender(filePath, layout, useFourByteEncoding,
                                               closeFrameOnFlush, compressionLevel);
