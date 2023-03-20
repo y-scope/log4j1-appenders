@@ -47,7 +47,7 @@
     <dependency>
       <groupId>com.yscope.clp</groupId>
       <artifactId>clp-ffi</artifactId>
-      <version>0.3.1</version>
+      <version>0.3.2</version>
     </dependency>
     <dependency>
       <groupId>commons-io</groupId>
