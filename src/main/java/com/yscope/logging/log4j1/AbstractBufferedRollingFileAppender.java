@@ -3,6 +3,7 @@ package com.yscope.logging.log4j1;
 import java.io.Flushable;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.log4j.Level;
@@ -357,6 +358,14 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   protected abstract String computeLogFileName (String baseName, long logRolloverTimestamp);
 
   /**
+   * Computes the metadata which will be included in a synchronization request
+   * @return The computed metadata map
+   */
+  protected Map<String, Object> computeSyncRequestMetadata () {
+    return new HashMap<>();
+  }
+
+  /**
    * Tests if log level is supported by this appender configuration
    * @param level string passed in from configuration parameter
    * @return true if supported, false otherwise
@@ -504,11 +513,13 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       public final String logFileBaseName;
       public final long logRolloverTimestamp;
       public final boolean deleteFile;
+      public final Map<String, Object> metadata;
 
       public SyncRequest (String logFileBaseName, long logRolloverTimestamp, boolean deleteFile) {
         this.logFileBaseName = logFileBaseName;
         this.logRolloverTimestamp = logRolloverTimestamp;
         this.deleteFile = deleteFile;
+        this.metadata = computeSyncRequestMetadata();
       }
     }
   }

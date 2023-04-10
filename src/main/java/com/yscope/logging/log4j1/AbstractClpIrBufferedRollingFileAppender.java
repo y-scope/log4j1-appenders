@@ -2,6 +2,8 @@ package com.yscope.logging.log4j1;
 
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.log4j.spi.LoggingEvent;
 
@@ -24,6 +26,8 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     extends AbstractBufferedRollingFileAppender
 {
   public static final String CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION = ".clp.zst";
+
+  protected long logEventIdx = 1L;
 
   // Appender settings, some of which may be set by Log4j through reflection.
   // For descriptions of the properties, see their setters below.
@@ -153,6 +157,15 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   @Override
   public void flush () throws IOException {
     clpIrFileAppender.flush();
+  }
+
+  @Override
+  protected Map<String, Object> computeSyncRequestMetadata () {
+    Map<String, Object> metadata = new HashMap<>();
+    metadata.put("compressedLogSize", getCompressedSize());
+    metadata.put("uncompressedLogSize", getUncompressedSize());
+    metadata.put("logEventIdx", logEventIdx);
+    return metadata;
   }
 
   @Override
