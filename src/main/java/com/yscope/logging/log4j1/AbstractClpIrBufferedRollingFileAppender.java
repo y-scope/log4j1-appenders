@@ -2,6 +2,8 @@ package com.yscope.logging.log4j1;
 
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.log4j.spi.LoggingEvent;
 
@@ -117,6 +119,10 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     return compressedSizeSinceLastRollover + clpIrFileAppender.getCompressedSize();
   }
 
+  public int getCompressionLevel () {
+    return compressionLevel;
+  }
+
   @Override
   public void activateOptionsHook (long currentTimestamp) throws IOException {
     String fileName = computeLogFileName(getBaseName(), currentTimestamp);
@@ -153,6 +159,15 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   @Override
   public void flush () throws IOException {
     clpIrFileAppender.flush();
+  }
+
+  @Override
+  protected Map<String, Object> computeSyncRequestMetadata () {
+    Map<String, Object> metadata = new HashMap<>();
+    metadata.put("compressedLogSize", clpIrFileAppender.getCompressedSize());
+    metadata.put("uncompressedLogSize", clpIrFileAppender.getUncompressedSize());
+    metadata.put("numEventsLogged", getNumEventsLogged());
+    return metadata;
   }
 
   @Override

@@ -3,6 +3,7 @@ package com.yscope.logging.log4j1;
 import java.io.Flushable;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.log4j.Level;
@@ -77,6 +78,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   private final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
   private final BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
+
+  private long numEventsLogged = 0L;
 
   private boolean activated = false;
 
@@ -193,6 +196,10 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     return baseName;
   }
 
+  public long getNumEventsLogged () {
+    return numEventsLogged;
+  }
+
   /**
    * Activates the appender's options.
    * <p></p>
@@ -251,7 +258,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
         // Just log the failure but continue the close process
         logError("closeHook failed.", ex);
       }
-      backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, true);
+      backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, true,
+                                          computeSyncRequestMetadata());
       backgroundSyncThread.addShutdownRequest();
     } else {
       try {
@@ -261,7 +269,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       } catch (IOException e) {
         logError("Failed to flush", e);
       }
-      backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, false);
+      backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, false,
+                                          computeSyncRequestMetadata());
     }
 
     closed = true;
@@ -283,14 +292,17 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   public final synchronized void append (LoggingEvent loggingEvent) {
     try {
       appendHook(loggingEvent);
+      ++numEventsLogged;
 
       if (false == rolloverRequired()) {
         updateFreshnessTimeouts(loggingEvent);
       } else {
-        backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, true);
+        backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, true,
+                                            computeSyncRequestMetadata());
         resetFreshnessTimeouts();
         lastRolloverTimestamp = loggingEvent.getTimeStamp();
         startNewLogFile(lastRolloverTimestamp);
+        numEventsLogged = 0L;
       }
     } catch (Exception ex) {
       getErrorHandler().error("Failed to write log event.", ex, ErrorCode.WRITE_FAILURE);
@@ -336,9 +348,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * @param logRolloverTimestamp The approximate timestamp of when the target
    * log file was rolled over
    * @param deleteFile Whether the log file can be deleted after syncing
+   * @param fileMetadata Extra metadata for the file that was captured at the
+   * time when the sync request was generated
    */
-  protected abstract void sync (String baseName, long logRolloverTimestamp, boolean deleteFile)
-      throws Exception;
+  protected abstract void sync (String baseName, long logRolloverTimestamp, boolean deleteFile,
+                                Map<String, Object> fileMetadata) throws Exception;
 
   /**
    * Appends a log event to the file.
@@ -355,6 +369,14 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * @return The computed log file name
    */
   protected abstract String computeLogFileName (String baseName, long logRolloverTimestamp);
+
+  /**
+   * Computes the file metadata to be included in a synchronization request
+   * @return The computed file metadata
+   */
+  protected Map<String, Object> computeSyncRequestMetadata () {
+    return null;
+  }
 
   /**
    * Tests if log level is supported by this appender configuration
@@ -412,7 +434,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     long ts = timeSource.getCurrentTimeInMilliseconds();
     if (ts >= flushSoftTimeoutTimestamp || ts >= flushHardTimeoutTimestamp) {
       flush();
-      backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, false);
+      backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, false,
+                                          computeSyncRequestMetadata());
       resetFreshnessTimeouts();
     }
   }
@@ -442,8 +465,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Thread to synchronize log files in the background (by calling
-   * {@link #sync(String, long, boolean) sync}). The thread maintains a request
-   * queue that callers should populate.
+   * {@link #sync(String, long, boolean, Map<String, Object>) sync}). The thread
+   * maintains a request queue that callers should populate.
    */
   private class BackgroundSyncThread extends Thread {
     private final LinkedBlockingQueue<Request> requests = new LinkedBlockingQueue<>();
@@ -457,7 +480,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
             SyncRequest syncRequest = (SyncRequest)request;
             try {
               sync(syncRequest.logFileBaseName, syncRequest.logRolloverTimestamp,
-                   syncRequest.deleteFile);
+                   syncRequest.deleteFile, syncRequest.fileMetadata);
             } catch (Exception ex) {
               String logFilePath = computeLogFileName(syncRequest.logFileBaseName,
                                                       syncRequest.logRolloverTimestamp);
@@ -490,9 +513,12 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
      * @param logRolloverTimestamp The approximate timestamp of when the target
      * log file was rolled over
      * @param deleteFile Whether the log file can be deleted after syncing.
+     * @param fileMetadata Extra metadata for the file
      */
-    public void addSyncRequest (String baseName, long logRolloverTimestamp, boolean deleteFile) {
-      Request syncRequest = new SyncRequest(baseName, logRolloverTimestamp, deleteFile);
+    public void addSyncRequest (String baseName, long logRolloverTimestamp, boolean deleteFile,
+                                Map<String, Object> fileMetadata) {
+      Request syncRequest =
+          new SyncRequest(baseName, logRolloverTimestamp, deleteFile, fileMetadata);
       while (false == requests.offer(syncRequest)) {}
     }
 
@@ -504,11 +530,14 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       public final String logFileBaseName;
       public final long logRolloverTimestamp;
       public final boolean deleteFile;
+      public final Map<String, Object> fileMetadata;
 
-      public SyncRequest (String logFileBaseName, long logRolloverTimestamp, boolean deleteFile) {
+      public SyncRequest (String logFileBaseName, long logRolloverTimestamp, boolean deleteFile,
+                          Map<String, Object> fileMetadata) {
         this.logFileBaseName = logFileBaseName;
         this.logRolloverTimestamp = logRolloverTimestamp;
         this.deleteFile = deleteFile;
+        this.fileMetadata = fileMetadata;
       }
     }
   }

@@ -1,5 +1,7 @@
 package com.yscope.logging.log4j1;
 
+import java.util.Map;
+
 /**
  * A rolling file appender used for testing
  * {@link AbstractClpIrBufferedRollingFileAppender}. It specifically allows us
@@ -35,10 +37,11 @@ public class RollingFileTestAppender extends AbstractClpIrBufferedRollingFileApp
    * @param baseName {@inheritDoc}
    * @param logRolloverTimestamp {@inheritDoc}
    * @param deleteFile {@inheritDoc}
+   * @param fileMetadata {@inheritDoc}
    */
   @Override
   protected synchronized void sync (String baseName, long logRolloverTimestamp,
-                                    boolean deleteFile)
+                                    boolean deleteFile, Map<String, Object> fileMetadata)
   {
     if (deleteFile) {
       numRollovers += 1;
