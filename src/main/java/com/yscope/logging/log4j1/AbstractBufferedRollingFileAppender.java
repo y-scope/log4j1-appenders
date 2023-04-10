@@ -365,7 +365,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * @return The computed metadata map
    */
   protected Map<String, Object> computeSyncRequestMetadata () {
-    return new HashMap<>();
+    return null;
   }
 
   /**
