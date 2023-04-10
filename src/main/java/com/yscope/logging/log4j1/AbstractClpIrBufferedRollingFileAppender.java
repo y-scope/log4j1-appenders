@@ -27,8 +27,6 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 {
   public static final String CLP_COMPRESSED_IRSTREAM_FILE_EXTENSION = ".clp.zst";
 
-  protected long logEventIdx = 1L;
-
   // Appender settings, some of which may be set by Log4j through reflection.
   // For descriptions of the properties, see their setters below.
   private String outputDir;
@@ -121,6 +119,10 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     return compressedSizeSinceLastRollover + clpIrFileAppender.getCompressedSize();
   }
 
+  public int getCompressionLevel () {
+    return compressionLevel;
+  }
+
   @Override
   public void activateOptionsHook (long currentTimestamp) throws IOException {
     String fileName = computeLogFileName(getBaseName(), currentTimestamp);
@@ -162,9 +164,9 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
   @Override
   protected Map<String, Object> computeSyncRequestMetadata () {
     Map<String, Object> metadata = new HashMap<>();
-    metadata.put("compressedLogSize", getCompressedSize());
-    metadata.put("uncompressedLogSize", getUncompressedSize());
-    metadata.put("logEventIdx", logEventIdx);
+    metadata.put("compressedLogSize", clpIrFileAppender.getCompressedSize());
+    metadata.put("uncompressedLogSize", clpIrFileAppender.getUncompressedSize());
+    metadata.put("logEventIdx", getLogEventIdx());
     return metadata;
   }
 
