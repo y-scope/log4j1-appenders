@@ -166,7 +166,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
     Map<String, Object> metadata = new HashMap<>();
     metadata.put("compressedLogSize", clpIrFileAppender.getCompressedSize());
     metadata.put("uncompressedLogSize", clpIrFileAppender.getUncompressedSize());
-    metadata.put("numEventLogged", getNumEventLogged());
+    metadata.put("numEventsLogged", getNumEventsLogged());
     return metadata;
   }
 

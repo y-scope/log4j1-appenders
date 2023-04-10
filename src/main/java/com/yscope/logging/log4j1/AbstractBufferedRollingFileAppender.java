@@ -79,7 +79,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   private final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
   private final BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
 
-  private long numEventLogged = 0L;
+  private long numEventsLogged = 0L;
 
   private boolean activated = false;
 
@@ -196,8 +196,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     return baseName;
   }
 
-  public long getNumEventLogged () {
-    return numEventLogged;
+  public long getNumEventsLogged () {
+    return numEventsLogged;
   }
 
   /**
@@ -292,7 +292,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   public final synchronized void append (LoggingEvent loggingEvent) {
     try {
       appendHook(loggingEvent);
-      ++numEventLogged;
+      ++numEventsLogged;
 
       if (false == rolloverRequired()) {
         updateFreshnessTimeouts(loggingEvent);
@@ -302,7 +302,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
         resetFreshnessTimeouts();
         lastRolloverTimestamp = loggingEvent.getTimeStamp();
         startNewLogFile(lastRolloverTimestamp);
-        numEventLogged = 0L;
+        numEventsLogged = 0L;
       }
     } catch (Exception ex) {
       getErrorHandler().error("Failed to write log event.", ex, ErrorCode.WRITE_FAILURE);
