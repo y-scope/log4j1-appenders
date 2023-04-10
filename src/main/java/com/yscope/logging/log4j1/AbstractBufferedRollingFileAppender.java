@@ -340,9 +340,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * @param logRolloverTimestamp The approximate timestamp of when the target
    * log file was rolled over
    * @param deleteFile Whether the log file can be deleted after syncing
+   * @param fileMetadata Extra metadata for the file that was captured at the
+   * time when the sync request was generated
    */
-  protected abstract void sync (String baseName, long logRolloverTimestamp, boolean deleteFile)
-      throws Exception;
+  protected abstract void sync (String baseName, long logRolloverTimestamp, boolean deleteFile,
+                                Map<String, Object> fileMetadata) throws Exception;
 
   /**
    * Appends a log event to the file.
@@ -361,8 +363,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   protected abstract String computeLogFileName (String baseName, long logRolloverTimestamp);
 
   /**
-   * Computes the metadata which will be included in a synchronization request
-   * @return The computed metadata map
+   * Computes the file metadata to be included in a synchronization request
+   * @return The computed file metadata
    */
   protected Map<String, Object> computeSyncRequestMetadata () {
     return null;
@@ -455,8 +457,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Thread to synchronize log files in the background (by calling
-   * {@link #sync(String, long, boolean) sync}). The thread maintains a request
-   * queue that callers should populate.
+   * {@link #sync(String, long, boolean, Map<String, Object>) sync}). The thread
+   * maintains a request queue that callers should populate.
    */
   private class BackgroundSyncThread extends Thread {
     private final LinkedBlockingQueue<Request> requests = new LinkedBlockingQueue<>();
@@ -470,7 +472,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
             SyncRequest syncRequest = (SyncRequest)request;
             try {
               sync(syncRequest.logFileBaseName, syncRequest.logRolloverTimestamp,
-                   syncRequest.deleteFile);
+                   syncRequest.deleteFile, syncRequest.fileMetadata);
             } catch (Exception ex) {
               String logFilePath = computeLogFileName(syncRequest.logFileBaseName,
                                                       syncRequest.logRolloverTimestamp);
@@ -503,11 +505,12 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
      * @param logRolloverTimestamp The approximate timestamp of when the target
      * log file was rolled over
      * @param deleteFile Whether the log file can be deleted after syncing.
-     * @param metadata The metadata map object to be included in the sync request.
+     * @param fileMetadata Extra metadata for the file
      */
     public void addSyncRequest (String baseName, long logRolloverTimestamp, boolean deleteFile,
-                                Map<String, Object> metadata) {
-      Request syncRequest = new SyncRequest(baseName, logRolloverTimestamp, deleteFile, metadata);
+                                Map<String, Object> fileMetadata) {
+      Request syncRequest =
+          new SyncRequest(baseName, logRolloverTimestamp, deleteFile, fileMetadata);
       while (false == requests.offer(syncRequest)) {}
     }
 
@@ -519,14 +522,14 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       public final String logFileBaseName;
       public final long logRolloverTimestamp;
       public final boolean deleteFile;
-      public final Map<String, Object> metadata;
+      public final Map<String, Object> fileMetadata;
 
       public SyncRequest (String logFileBaseName, long logRolloverTimestamp, boolean deleteFile,
-                          Map<String, Object> metadata) {
+                          Map<String, Object> fileMetadata) {
         this.logFileBaseName = logFileBaseName;
         this.logRolloverTimestamp = logRolloverTimestamp;
         this.deleteFile = deleteFile;
-        this.metadata = metadata;
+        this.fileMetadata = fileMetadata;
       }
     }
   }
