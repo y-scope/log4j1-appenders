@@ -31,18 +31,27 @@ import org.apache.log4j.spi.LoggingEvent;
  * <p></p>
  * The freshness property maintained by this class allows users to specify the
  * delay between a log event being generated and the log file being flushed and
- * synchronized. Specifically, this class maintains a soft and hard timeout per
- * log level:
- * <ul>
- *   <li><b>hard timeout</b> - the maximum elapsed time between generating a
- *   log event and the file being flushed and synchronized.</li>
- *   <li><b>soft timeout</b> - the maximum elapsed time to wait for a new log
- *   event to be generated before flushing and synchronizing the file</li>
+ * synchronized. There are two types of delays that can be specified, and each
+ * can be specified per log level:
+ <ul>
+ *   <li><b>hard timeouts</b> - these timeouts cause a hard deadline to be set
+ *   for when flushing must occur. E.g., if log event occurs at time t, then a
+ *   hard deadline is set at time (t + hardTimeout). This hard deadline may be
+ *   decreased if a subsequent log event has an associated hard timeout that
+ *   would result in an earlier hard deadline.</li>
+ *   <li><b>soft timeouts</b> - these timeouts cause a soft deadline to be set
+ *   for when flushing should occur. Unlike the hard deadline, this deadline may
+ *   be increased if a subsequent log event occurs before any deadline is
+ *   reached. Note however, that the timeout used to calculate the soft deadline
+ *   is set to the minimum of the timeouts associated with the log events that
+ *   have occurred before the deadline. E.g., if a log event associated with a
+ *   5s soft timeout occurs, and then is followed by a log event associated with
+ *   a 10s soft timeout, the soft deadline will be set as if the second log
+ *   event had a had 5s soft timeout.</li>
  * </ul>
- * The shortest timeout in each log level determines when a log file will be
- * flushed and synchronized.
+ * Once a deadline is reached, the current timeouts and deadlines are reset.
  * <p></p>
- * For instance, let's assume the soft and hard timeouts for ERROR logs are set
+ * For example, let's assume the soft and hard timeouts for ERROR logs are set
  * to 5 seconds and 5 minutes respectively. Now imagine an ERROR log event is
  * generated at t = 0s. This class will trigger a flush at t = 5s unless another
  * ERROR log event is generated before then. If one is generated at t = 4s, then
