@@ -80,9 +80,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   private long flushHardTimeoutTimestamp;
   private long flushSoftTimeoutTimestamp;
   // The maximum soft timeout allowed. If users wish to continue log collection
-  // and synchronization after appender is interrupted, this value will be
-  // artificiality lowered to increase the likelihood of flushing before the
-  // app terminates.
+  // and synchronization while the JVM is shutting down, this value will be
+  // lowered to increase the likelihood of flushing before the shutdown
+  // completes.
   private long flushMaximumSoftTimeout;
 
   private final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
@@ -91,6 +91,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   private long numEventsLogged = 0L;
 
   private boolean activated = false;
+
+  private boolean closeStarted = false;
 
   /**
    * Default constructor
@@ -210,6 +212,29 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
+   * This method is primarily used for testing
+   * @return Whether any of the background threads in this class are running
+   */
+  public boolean backgroundThreadsRunning () {
+    return backgroundFlushThread.isAlive() || backgroundSyncThread.isAlive();
+  }
+
+  /**
+   * Signals the background threads to exit and waits for them to finish. This
+   * method is primarily used for testing.
+   */
+  public void exitBackgroundThreads () {
+    backgroundFlushThread.interrupt();
+    backgroundSyncThread.interrupt();
+    try {
+      backgroundFlushThread.join();
+      backgroundSyncThread.join();
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  /**
    * Activates the appender's options.
    * <p></p>
    * This method is {@code final} to ensure it is not overridden by derived
@@ -237,7 +262,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       if (closeFileOnShutdown) {
         Runtime.getRuntime().addShutdownHook(new Thread(this::close));
       }
+      backgroundFlushThread.setDaemon(true);
       backgroundFlushThread.start();
+      backgroundSyncThread.setDaemon(true);
       backgroundSyncThread.start();
 
       activated = true;
@@ -253,23 +280,48 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * This method is {@code final} to ensure it is not overridden by derived
    * classes since this base class needs to perform actions before/after the
    * derived class' {@link #closeHook()} method.
+   * <p></p>
+   * This method should <i>not</i> be marked {@code synchronized} since it joins
+   * with the background threads, and they may call synchronized methods
+   * themselves (e.g., {@link #sync} in the derived class), leading to a
+   * deadlock.
    */
   @Override
-  public final synchronized void close () {
-    if (closed) {
-      return;
+  public final void close () {
+    // Prevent multiple threads from running close concurrently
+    synchronized (this) {
+      if (closed || closeStarted) {
+        return;
+      }
+      closeStarted = true;
     }
 
     if (closeFileOnShutdown) {
+      // Shutdown the flush thread before we close (so we don't try to flush
+      // after the appender is already closed.
+      backgroundFlushThread.interrupt();
+      try {
+        backgroundFlushThread.join();
+      } catch (InterruptedException e) {
+        logError("Interrupted while joining backgroundFlushThread");
+      }
+
       try {
         closeHook();
       } catch (Exception ex) {
         // Just log the failure but continue the close process
         logError("closeHook failed.", ex);
       }
+
+      // Perform a final sync and then shutdown the sync thread
       backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, true,
                                           computeSyncRequestMetadata());
       backgroundSyncThread.addShutdownRequest();
+      try {
+        backgroundSyncThread.join();
+      } catch (InterruptedException e) {
+        logError("Interrupted while joining backgroundSyncThread");
+      }
     } else {
       try {
         // Flush now just in case we shut down before a timeout expires (and
@@ -278,6 +330,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       } catch (IOException e) {
         logError("Failed to flush", e);
       }
+      // In case this method is being called from a shutdown hook, lower the
+      // maximum soft timeout to increase the likelihood that the log will be
+      // synced before the app shuts down
+      flushMaximumSoftTimeout = Math.min(1000 /* 1 second */,
+                                         flushSoftTimeoutPerLevel.get(Level.FATAL));
       backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, false,
                                           computeSyncRequestMetadata());
     }
@@ -405,14 +462,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   private void resetFreshnessTimeouts () {
     flushHardTimeoutTimestamp = Long.MAX_VALUE;
     flushSoftTimeoutTimestamp = Long.MAX_VALUE;
-    if (Thread.currentThread().isInterrupted()) {
-      // Since the thread has been interrupted (presumably because the app is
-      // being shut down), lower the maximum soft timeout to increase the
-      // likelihood that the log will be synced before the app shuts down.
-      flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.FATAL);
-    } else {
-      flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.TRACE);
-    }
+    flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.TRACE);
   }
 
   /**
@@ -463,10 +513,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
         } catch (IOException e) {
           logError("Failed to flush buffered appender in the background", e);
         } catch (InterruptedException e) {
-          if (closeFileOnShutdown) {
-            logDebug("Received interrupt message for graceful shutdown of BackgroundFlushThread");
-            break;
-          }
+          logDebug("Received interrupt message for graceful shutdown of BackgroundFlushThread");
+          break;
         }
       }
     }
@@ -500,9 +548,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
             break;
           }
         } catch (InterruptedException e) {
-          // Ignore the exception since we want to continue syncing logs even
-          // in case of exceptions (the thread only shuts down when a shutdown
-          // request is made)
+          break;
         }
       }
     }
