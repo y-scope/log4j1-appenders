@@ -5,10 +5,13 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.spi.ErrorCode;
 import org.apache.log4j.spi.LoggingEvent;
+
+import static java.lang.Thread.sleep;
 
 /**
  * Base class for Log4j file appenders with specific design characteristics;
@@ -62,20 +65,40 @@ import org.apache.log4j.spi.LoggingEvent;
  * Maintaining these timeouts per log level allows us to flush logs sooner if
  * more important log levels occur. For instance, we can set smaller timeouts
  * for ERROR log events compared to DEBUG log events.
+ * <p></p>
+ * This class also allows logs to be collected while the JVM is shutting down.
+ * This can be enabled by setting closeOnShutdown to false. When the JVM starts
+ * shutting down, the appender will maintain two timeouts before the shutdown
+ * is allowed to complete:
+ * <ul>
+ *   <li><b>soft timeout</b></li> - this is a relative delay from when the
+ *   shutdown is requested to when the shutdown is allowed to continue. Is is
+ *   soft in the sense that if a log event occurs before this delay expires, the
+ *   delay is reset based on the current time.
+ *   <li><b>hard timeout</b></li> - this is a relative delay from when the
+ *   shutdown is requested to when the shutdown is allowed to continue.
+ * </ul>
  */
 public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppenderSkeleton
     implements Flushable
 {
+  // Volatile members below are marked as such because they are accessed by
+  // multiple threads
+
+  private final static long INVALID_FLUSH_TIMEOUT_TIMESTAMP = Long.MAX_VALUE;
+
   protected final TimeSource timeSource;
   protected long lastRolloverTimestamp;
 
   // Appender settings, some of which may be set by Log4j through reflection.
   // For descriptions of the properties, see their setters below.
   private String baseName = null;
-  private boolean closeFileOnShutdown = true;
+  private boolean closeOnShutdown = true;
   private final HashMap<Level, Long> flushHardTimeoutPerLevel = new HashMap<>();
   private final HashMap<Level, Long> flushSoftTimeoutPerLevel = new HashMap<>();
-  private int timeoutCheckPeriod = 1000;
+  private long shutdownSoftTimeout = 5000;  // milliseconds
+  private long shutdownHardTimeout = 30000;  // milliseconds
+  private volatile int timeoutCheckPeriod = 1000;
 
   private long flushHardTimeoutTimestamp;
   private long flushSoftTimeoutTimestamp;
@@ -83,16 +106,21 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   // and synchronization while the JVM is shutting down, this value will be
   // lowered to increase the likelihood of flushing before the shutdown
   // completes.
+  private volatile long flushAbsoluteMaximumSoftTimeout;
   private long flushMaximumSoftTimeout;
 
-  private final BackgroundFlushThread backgroundFlushThread = new BackgroundFlushThread();
-  private final BackgroundSyncThread backgroundSyncThread = new BackgroundSyncThread();
+  private final Thread backgroundFlushThread = new Thread(new BackgroundFlushRunnable());
+  private final BackgroundSyncRunnable backgroundSyncRunnable = new BackgroundSyncRunnable();
+  private final Thread backgroundSyncThread = new Thread(backgroundSyncRunnable);
+  private final Thread shutdownHookThread = new Thread(new ShutdownHookRunnable());
+  private volatile boolean closeWithDelayedShutdown = false;
 
-  private long numEventsLogged = 0L;
+  private volatile long numEventsLogged = 0L;
 
   private boolean activated = false;
 
-  private boolean closeStarted = false;
+  private final AtomicBoolean closeStarted = new AtomicBoolean(false);
+  private volatile boolean closedForAppends = false;
 
   /**
    * Default constructor
@@ -134,16 +162,16 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Sets whether to close the log file upon receiving a shutdown signal before
-   * the JVM exits. If set to false, the appender will continue appending logs
-   * even while the JVM is shutting down and the appender will do its best to
-   * sync those logs before the JVM shuts down. This presents a tradeoff
+   * Sets whether to close the log appender upon receiving a shutdown signal
+   * before the JVM exits. If set to false, the appender will continue appending
+   * logs even while the JVM is shutting down and the appender will do its best
+   * to sync those logs before the JVM shuts down. This presents a tradeoff
    * between capturing more log events and potential data loss if the log events
-   * cannot be flushed and synced before the JVM shuts down.
-   * @param closeFileOnShutdown Whether to close the log file on shutdown
+   * cannot be flushed and synced before the JVM is killed.
+   * @param closeOnShutdown Whether to close the log file on shutdown
    */
-  public void setCloseFileOnShutdown (boolean closeFileOnShutdown) {
-    this.closeFileOnShutdown = closeFileOnShutdown;
+  public void setCloseOnShutdown (boolean closeOnShutdown) {
+    this.closeOnShutdown = closeOnShutdown;
   }
 
   /**
@@ -193,6 +221,22 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
+   * Sets the soft shutdown timeout
+   * @param milliseconds
+   */
+  public void setShutdownSoftTimeoutInMilliseconds (long milliseconds) {
+    shutdownSoftTimeout = milliseconds;
+  }
+
+  /**
+   * Sets the hard shutdown timeout
+   * @param seconds
+   */
+  public void setShutdownHardTimeoutInSeconds (long seconds) {
+    shutdownHardTimeout = seconds * 1000;
+  }
+
+  /**
    * Sets the period between checking for soft/hard timeouts (and then
    * triggering a flush and sync). Care should be taken to ensure this period
    * does not significantly differ from the lowest timeout since that will
@@ -216,22 +260,16 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * @return Whether any of the background threads in this class are running
    */
   public boolean backgroundThreadsRunning () {
-    return backgroundFlushThread.isAlive() || backgroundSyncThread.isAlive();
+    return backgroundFlushThread.isAlive() || backgroundSyncThread.isAlive()
+        || shutdownHookThread.isAlive();
   }
 
   /**
-   * Signals the background threads to exit and waits for them to finish. This
-   * method is primarily used for testing.
+   * Simulates the JVM calling this appender's shutdown hook. This method should
+   * <i>only</i> be used for testing.
    */
-  public void exitBackgroundThreads () {
-    backgroundFlushThread.interrupt();
-    backgroundSyncThread.interrupt();
-    try {
-      backgroundFlushThread.join();
-      backgroundSyncThread.join();
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
+  public void simulateShutdownHook () {
+    shutdownHookThread.start();
   }
 
   /**
@@ -253,18 +291,15 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       return;
     }
 
+    flushAbsoluteMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.TRACE);
     resetFreshnessTimeouts();
 
     try {
       // Set the first rollover timestamp to the current time
       lastRolloverTimestamp = System.currentTimeMillis();
       activateOptionsHook(lastRolloverTimestamp);
-      if (closeFileOnShutdown) {
-        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
-      }
-      backgroundFlushThread.setDaemon(true);
+      Runtime.getRuntime().addShutdownHook(shutdownHookThread);
       backgroundFlushThread.start();
-      backgroundSyncThread.setDaemon(true);
       backgroundSyncThread.start();
 
       activated = true;
@@ -280,63 +315,61 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * This method is {@code final} to ensure it is not overridden by derived
    * classes since this base class needs to perform actions before/after the
    * derived class' {@link #closeHook()} method.
-   * <p></p>
-   * This method should <i>not</i> be marked {@code synchronized} since it joins
-   * with the background threads, and they may call synchronized methods
-   * themselves (e.g., {@link #sync} in the derived class), leading to a
-   * deadlock.
    */
   @Override
   public final void close () {
+    // NOTE: This method should not be marked {@code synchronized} since it
+    // joins with the background threads, and they may call synchronized methods
+    // themselves (e.g., {@link #sync} in the derived class), leading to a
+    // deadlock.
+
     // Prevent multiple threads from running close concurrently
-    synchronized (this) {
-      if (closed || closeStarted) {
-        return;
-      }
-      closeStarted = true;
+    if (false == closeStarted.compareAndSet(false, true)) {
+      return;
     }
 
-    if (closeFileOnShutdown) {
-      // Shutdown the flush thread before we close (so we don't try to flush
-      // after the appender is already closed.
-      backgroundFlushThread.interrupt();
+    if (closeWithDelayedShutdown) {
       try {
-        backgroundFlushThread.join();
-      } catch (InterruptedException e) {
-        logError("Interrupted while joining backgroundFlushThread");
-      }
-
-      try {
-        closeHook();
-      } catch (Exception ex) {
-        // Just log the failure but continue the close process
-        logError("closeHook failed.", ex);
-      }
-
-      // Perform a final sync and then shutdown the sync thread
-      backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, true,
-                                          computeSyncRequestMetadata());
-      backgroundSyncThread.addShutdownRequest();
-      try {
-        backgroundSyncThread.join();
-      } catch (InterruptedException e) {
-        logError("Interrupted while joining backgroundSyncThread");
-      }
-    } else {
-      try {
-        // Flush now just in case we shut down before a timeout expires (and
-        // triggers a flush)
+        // Flush now just in case we shut down before a timeout expires
         flush();
       } catch (IOException e) {
         logError("Failed to flush", e);
       }
-      // In case this method is being called from a shutdown hook, lower the
-      // maximum soft timeout to increase the likelihood that the log will be
-      // synced before the app shuts down
-      flushMaximumSoftTimeout = Math.min(1000 /* 1 second */,
-                                         flushSoftTimeoutPerLevel.get(Level.FATAL));
-      backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, false,
-                                          computeSyncRequestMetadata());
+
+      // Decrease the absolute maximum soft timeout to increase the likelihood
+      // that the log will be synced before the app shuts down
+      flushAbsoluteMaximumSoftTimeout = Math.min(1000 /* 1 second */,
+                                                 flushSoftTimeoutPerLevel.get(Level.FATAL));
+    }
+
+    // Shutdown the flush thread before we close (so we don't try to flush after
+    // the appender is already closed)
+    backgroundFlushThread.interrupt();
+    try {
+      backgroundFlushThread.join();
+    } catch (InterruptedException e) {
+      logError("Interrupted while joining backgroundFlushThread");
+    }
+
+    // Prevent any further appends
+    closedForAppends = true;
+
+    try {
+      closeHook();
+    } catch (Exception ex) {
+      // Just log the failure but continue the close process
+      logError("closeHook failed.", ex);
+    }
+
+    // Perform a rollover (in case an append occurred after flushing the
+    // background thread) and then shutdown the sync thread
+    backgroundSyncRunnable.addSyncRequest(baseName, lastRolloverTimestamp, true,
+                                        computeSyncRequestMetadata());
+    backgroundSyncRunnable.addShutdownRequest();
+    try {
+      backgroundSyncThread.join();
+    } catch (InterruptedException e) {
+      logError("Interrupted while joining backgroundSyncThread");
     }
 
     closed = true;
@@ -356,6 +389,11 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   @Override
   public final synchronized void append (LoggingEvent loggingEvent) {
+    if (closedForAppends) {
+      logWarn("Appender closed for appends.");
+      return;
+    }
+
     try {
       appendHook(loggingEvent);
       ++numEventsLogged;
@@ -363,8 +401,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
       if (false == rolloverRequired()) {
         updateFreshnessTimeouts(loggingEvent);
       } else {
-        backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, true,
-                                            computeSyncRequestMetadata());
+        backgroundSyncRunnable.addSyncRequest(baseName, lastRolloverTimestamp, true,
+                                              computeSyncRequestMetadata());
         resetFreshnessTimeouts();
         lastRolloverTimestamp = loggingEvent.getTimeStamp();
         startNewLogFile(lastRolloverTimestamp);
@@ -460,9 +498,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * Resets the soft/hard freshness timeouts.
    */
   private void resetFreshnessTimeouts () {
-    flushHardTimeoutTimestamp = Long.MAX_VALUE;
-    flushSoftTimeoutTimestamp = Long.MAX_VALUE;
-    flushMaximumSoftTimeout = flushSoftTimeoutPerLevel.get(Level.TRACE);
+    flushHardTimeoutTimestamp = INVALID_FLUSH_TIMEOUT_TIMESTAMP;
+    flushSoftTimeoutTimestamp = INVALID_FLUSH_TIMEOUT_TIMESTAMP;
+    flushMaximumSoftTimeout = flushAbsoluteMaximumSoftTimeout;
   }
 
   /**
@@ -493,8 +531,8 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
     long ts = timeSource.getCurrentTimeInMilliseconds();
     if (ts >= flushSoftTimeoutTimestamp || ts >= flushHardTimeoutTimestamp) {
       flush();
-      backgroundSyncThread.addSyncRequest(baseName, lastRolloverTimestamp, false,
-                                          computeSyncRequestMetadata());
+      backgroundSyncRunnable.addSyncRequest(baseName, lastRolloverTimestamp, false,
+                                            computeSyncRequestMetadata());
       resetFreshnessTimeouts();
     }
   }
@@ -503,18 +541,51 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * Periodically flushes and syncs the current log file if we've exceeded one
    * of the freshness timeouts.
    */
-  private class BackgroundFlushThread extends Thread {
+  private class BackgroundFlushRunnable implements Runnable {
     @Override
     public void run () {
+      boolean delayedShutdownRequested = false;
+      long shutdownSoftTimeoutTimestamp = INVALID_FLUSH_TIMEOUT_TIMESTAMP;
+      long shutdownHardTimeoutTimestamp = INVALID_FLUSH_TIMEOUT_TIMESTAMP;
+      long lastNumEventsLogged = -1;
       while (true) {
         try {
           flushAndSyncIfNecessary();
+
+          if (delayedShutdownRequested) {
+            // Update soft timeout if another event occurred
+            long currentTimestamp = timeSource.getCurrentTimeInMilliseconds();
+            if (numEventsLogged != lastNumEventsLogged) {
+              lastNumEventsLogged = numEventsLogged;
+              shutdownSoftTimeoutTimestamp = currentTimestamp + shutdownSoftTimeout;
+            }
+
+            // Break if we've hit either timeout
+            if (currentTimestamp >= shutdownSoftTimeoutTimestamp
+                || currentTimestamp >= shutdownHardTimeoutTimestamp)
+            {
+              break;
+            }
+          }
+
           sleep(timeoutCheckPeriod);
         } catch (IOException e) {
           logError("Failed to flush buffered appender in the background", e);
         } catch (InterruptedException e) {
           logDebug("Received interrupt message for graceful shutdown of BackgroundFlushThread");
-          break;
+
+          delayedShutdownRequested = closeWithDelayedShutdown;
+          if (closeOnShutdown || false == delayedShutdownRequested) {
+            break;
+          }
+          long currentTimestamp = timeSource.getCurrentTimeInMilliseconds();
+          shutdownSoftTimeoutTimestamp = currentTimestamp + shutdownSoftTimeout;
+          shutdownHardTimeoutTimestamp = currentTimestamp + shutdownHardTimeout;
+          lastNumEventsLogged = numEventsLogged;
+
+          // Lower the timeout check period so we react faster when flushing or
+          // shutting down is necessary
+          timeoutCheckPeriod = 100;
         }
       }
     }
@@ -525,7 +596,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * {@link #sync(String, long, boolean, Map<String, Object>) sync}). The thread
    * maintains a request queue that callers should populate.
    */
-  private class BackgroundSyncThread extends Thread {
+  private class BackgroundSyncRunnable implements Runnable {
     private final LinkedBlockingQueue<Request> requests = new LinkedBlockingQueue<>();
 
     @Override
@@ -594,6 +665,21 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
         this.deleteFile = deleteFile;
         this.fileMetadata = fileMetadata;
       }
+    }
+  }
+
+  /**
+   * Thread to handle shutting down the appender when the JVM is shutting down.
+   * When {@code closeOnShutdown} is false, this thread enables a delayed
+   * close procedure so that logs that occur during shutdown can be collected.
+   */
+  private class ShutdownHookRunnable implements Runnable {
+    @Override
+    public void run () {
+      if (false == closeOnShutdown) {
+        closeWithDelayedShutdown = true;
+      }
+      close();
     }
   }
 }
