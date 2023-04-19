@@ -226,9 +226,10 @@ public class TestRollingFileLogAppender {
   }
 
   /**
-   * Performs basic validation of flush timeout support (not specific to either soft/hard) for the
-   * appender
-   * @param testSoftTimeout Whether to test soft (true) or hard (false) timeout support
+   * Performs basic validation of flush timeout support (not specific to either
+   * soft/hard) for the appender
+   * @param testSoftTimeout Whether to test soft (true) or hard (false) timeout
+   * support
    */
   private void validateBasicFlushTimeoutSupport (boolean testSoftTimeout) {
     int timeoutUnitInMilliseconds =
