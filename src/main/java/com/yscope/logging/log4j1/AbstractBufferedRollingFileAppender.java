@@ -26,17 +26,17 @@ import static java.lang.Thread.sleep;
  * For instance, such an appender might compress log events as they are
  * generated, while still flushing and uploading them to remote storage a few
  * seconds after an error log event.
- * <p></p>
+ * <p>
  * This class handles keeping track of how fresh the logs are and the high-level
  * logic to trigger flushing, syncing, and rollover at the appropriate times.
  * Derived classes must implement methods to do the actual flushing, syncing,
  * and rollover as well as indicate whether rollover is necessary.
- * <p></p>
+ * <p>
  * The freshness property maintained by this class allows users to specify the
  * delay between a log event being generated and the log file being flushed and
  * synchronized. There are two types of delays that can be specified, and each
  * can be specified per log level:
- <ul>
+ * <ul>
  *   <li><b>hard timeouts</b> - these timeouts cause a hard deadline to be set
  *   for when flushing must occur. E.g., if log event occurs at time t, then a
  *   hard deadline is set at time (t + hardTimeout). This hard deadline may be
@@ -53,7 +53,7 @@ import static java.lang.Thread.sleep;
  *   event had a had 5s soft timeout.</li>
  * </ul>
  * Once a deadline is reached, the current timeouts and deadlines are reset.
- * <p></p>
+ * <p>
  * For example, let's assume the soft and hard timeouts for ERROR logs are set
  * to 5 seconds and 5 minutes respectively. Now imagine an ERROR log event is
  * generated at t = 0s. This class will trigger a flush at t = 5s unless another
@@ -61,22 +61,22 @@ import static java.lang.Thread.sleep;
  * this class will omit the flush at t = 5s and trigger a flush at t = 9s. If
  * ERROR log events keep being generated before a flush occurs, then this class
  * will definitely trigger a flush at t = 5min based on the hard timeout.
- * <p></p>
+ * <p>
  * Maintaining these timeouts per log level allows us to flush logs sooner if
  * more important log levels occur. For instance, we can set smaller timeouts
  * for ERROR log events compared to DEBUG log events.
- * <p></p>
+ * <p>
  * This class also allows logs to be collected while the JVM is shutting down.
  * This can be enabled by setting closeOnShutdown to false. When the JVM starts
  * shutting down, the appender will maintain two timeouts before the shutdown
  * is allowed to complete:
  * <ul>
- *   <li><b>soft timeout</b></li> - this is a relative delay from when the
- *   shutdown is requested to when the shutdown is allowed to continue. Is is
- *   soft in the sense that if a log event occurs before this delay expires, the
- *   delay is reset based on the current time.
- *   <li><b>hard timeout</b></li> - this is a relative delay from when the
- *   shutdown is requested to when the shutdown is allowed to continue.
+ *   <li><b>soft timeout</b> - this is a relative delay from when the shutdown
+ *   is requested to when the shutdown is allowed to continue. It is soft in the
+ *   sense that if a log event occurs before this delay expires, the delay is
+ *   reset based on the current time.</li>
+ *   <li><b>hard timeout</b> - this is a relative delay from when the shutdown
+ *   is requested to when the shutdown is allowed to continue.</li>
  * </ul>
  */
 public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppenderSkeleton
@@ -221,16 +221,14 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   }
 
   /**
-   * Sets the soft shutdown timeout
-   * @param milliseconds
+   * @param milliseconds The soft shutdown timeout in milliseconds
    */
   public void setShutdownSoftTimeoutInMilliseconds (long milliseconds) {
     shutdownSoftTimeout = milliseconds;
   }
 
   /**
-   * Sets the hard shutdown timeout
-   * @param seconds
+   * @param seconds The hard shutdown timeout in seconds
    */
   public void setShutdownHardTimeoutInSeconds (long seconds) {
     shutdownHardTimeout = seconds * 1000;
@@ -274,7 +272,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Activates the appender's options.
-   * <p></p>
+   * <p>
    * This method is {@code final} to ensure it is not overridden by derived
    * classes since this base class needs to perform actions before/after the
    * derived class' {@link #activateOptionsHook(long)} method.
@@ -311,7 +309,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Closes the appender.
-   * <p></p>
+   * <p>
    * This method is {@code final} to ensure it is not overridden by derived
    * classes since this base class needs to perform actions before/after the
    * derived class' {@link #closeHook()} method.
@@ -379,7 +377,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * Appends the given log event to the file (subject to any buffering by the
    * derived class). This method may also trigger a rollover and sync if the
    * derived class' {@link #rolloverRequired()} method returns true.
-   * <p></p>
+   * <p>
    * This method is {@code final} to ensure it is not overridden by derived
    * classes since this base class needs to perform actions before/after the
    * derived class' {@link #appendHook(LoggingEvent)} method. This method is
@@ -425,16 +423,19 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * Activates appender options for derived appenders.
    * @param currentTimestamp Current timestamp (useful for naming the first log
    * file)
+   * @throws Exception on error
    */
   protected abstract void activateOptionsHook (long currentTimestamp) throws Exception;
 
   /**
    * Closes the derived appender. Once closed, the appender cannot be reopened.
+   * @throws Exception on error
    */
   protected abstract void closeHook () throws Exception;
 
   /**
    * @return Whether to trigger a rollover
+   * @throws Exception on error
    */
   protected abstract boolean rolloverRequired () throws Exception;
 
@@ -442,6 +443,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * Starts a new log file.
    * @param lastEventTimestamp Timestamp of the last event that was logged
    * before calling this method (useful for naming the new log file).
+   * @throws Exception on error
    */
   protected abstract void startNewLogFile (long lastEventTimestamp) throws Exception;
 
@@ -454,6 +456,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * @param deleteFile Whether the log file can be deleted after syncing
    * @param fileMetadata Extra metadata for the file that was captured at the
    * time when the sync request was generated
+   * @throws Exception on error
    */
   protected abstract void sync (String baseName, long logRolloverTimestamp, boolean deleteFile,
                                 Map<String, Object> fileMetadata) throws Exception;
@@ -461,6 +464,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   /**
    * Appends a log event to the file.
    * @param event The log event
+   * @throws Exception on error
    */
   protected abstract void appendHook (LoggingEvent event) throws Exception;
 
@@ -521,7 +525,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
   /**
    * Flushes and synchronizes the log file if one of the freshness timeouts has
    * been reached.
-   * <p></p>
+   * <p>
    * This method is marked {@code synchronized} since it can be called from
    * logging threads and the background thread that monitors the freshness
    * timeouts.

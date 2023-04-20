@@ -29,7 +29,7 @@ import static com.yscope.logging.log4j1.Utils.createOutputFile;
 /**
  * A Log4j appender that writes log events into a Zstandard-compressed CLP IR
  * stream file.
- * <p></p>
+ * <p>
  * Since this appender buffers data in the process of compressing the output,
  * derived appenders should ensure the appender is closed even when the program
  * exits uncleanly. Otherwise, the compressed output may be truncated. When the
@@ -128,7 +128,7 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
   /**
    * @return The amount of data written to this appender for the current output
    * file, in bytes.
-   * <p></p>
+   * <p>
    * NOTE:
    * <ul>
    *   <li>This may be slightly inaccurate since we use an estimate of the
@@ -150,7 +150,7 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
 
   /**
    * Closes the previous file and starts a new file with the given path
-   * @param path
+   * @param path Path for the new file
    * @throws IOException on I/O error
    */
   public synchronized void startNewFile (String path) throws IOException {
@@ -325,7 +325,7 @@ public class ClpIrFileAppender extends EnhancedAppenderSkeleton implements Flush
    * Gets the timestamp pattern from the given Log4j Layout's conversion pattern
    * and creates a conversion pattern that doesn't contain any date conversion
    * patterns.
-   * <p></p>
+   * <p>
    * E.g., if the conversion pattern is
    * "%d{yyyy-MM-dd HH:mm:ss.SSSZ} %p [%c{1}] %m%n", this method will set the
    * timestamp pattern to "yyyy-MM-dd HH:mm:ss.SSSZ" and create the conversion

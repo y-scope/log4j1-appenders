@@ -12,11 +12,11 @@ import org.apache.log4j.spi.LoggingEvent;
  * CLP compressed IR-stream files and rollover based on the amount of
  * uncompressed and compressed data written to a file. Derived classes are
  * expected to handle synchronization (e.g., uploading to remote storage).
- * <p></p>
+ * <p>
  * Rollover based on the amount of uncompressed data written to file allows us
  * to ensure that the file remains manageable when decompressed for viewing,
  * etc.
- * <p></p>
+ * <p>
  * Rollover based on the amount of compressed data written to file allows us to
  * ensure the file is large enough to amortize filesystem overhead, and small
  * enough to be performant when uploading to remote storage as well as when
@@ -177,7 +177,7 @@ public abstract class AbstractClpIrBufferedRollingFileAppender
 
   /**
    * Computes a path for the provided log file name
-   * @param logFileName
+   * @param logFileName The log file name
    * @return The computed log file path
    */
   protected String computeLogFilePath (String logFileName) {

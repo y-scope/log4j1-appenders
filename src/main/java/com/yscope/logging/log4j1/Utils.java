@@ -14,7 +14,7 @@ import org.apache.log4j.Layout;
 public class Utils {
   /**
    * Creates and opens an output file and file output stream.
-   * @param filePath
+   * @param filePath Path for the file
    * @return The file output stream
    * @throws IOException on I/O error
    */
@@ -39,8 +39,8 @@ public class Utils {
   /**
    * Writes the given throwable's string representation to the given output
    * stream
-   * @param throwableStrRepresentation
-   * @param outputStream
+   * @param throwableStrRepresentation String representation of the throwable
+   * @param outputStream Output stream to write to
    * @throws IOException on I/O error
    */
   public static void writeThrowableStrRepresentation (
