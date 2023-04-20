@@ -20,7 +20,6 @@ import static java.lang.Thread.sleep;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class TestRollingFileLogAppender {
-  private static final long DURATION_NECESSARY_TO_TRIGGER_CONTEXT_SWITCH = 100;  // milliseconds
   private static final Logger logger = Logger.getLogger(TestFileAppender.class);
 
   private final String patternLayoutString = "%d{yy/MM/dd HH:mm:ss} %p %c{1}: %m%n";
@@ -212,7 +211,7 @@ public class TestRollingFileLogAppender {
     validateCloseBeforeShutdown(false);
     validateShutdownWithoutClose(0);
     validateShutdownWithoutClose(1);
-    validateShutdownWithoutClose(5);
+    validateShutdownWithoutClose(2);
   }
 
   @AfterEach
@@ -303,10 +302,15 @@ public class TestRollingFileLogAppender {
     assertFalse(appender.backgroundThreadsRunning());
 
     appender.simulateShutdownHook();
-    triggerContextSwitch();
+    waitForBackgroundFlushThread();
     assertFalse(appender.backgroundThreadsRunning());
   }
 
+  /**
+   * Validates shutting down the appender without calling {@code close} first
+   * @param numTimeoutSettingsToTest 0 - no timeouts, 1 - soft timeout only,
+   * 2 - both soft and hard timeouts
+   */
   private void validateShutdownWithoutClose (int numTimeoutSettingsToTest) {
     RollingFileTestAppender appender = createTestAppender(true, true);
     appender.setCloseOnShutdown(false);
@@ -323,40 +327,40 @@ public class TestRollingFileLogAppender {
 
     assertTrue(appender.backgroundThreadsRunning());
 
+    // Trigger the shutdown hook and ensure the threads continue to run
     appender.simulateShutdownHook();
-    triggerContextSwitch();
+    waitForBackgroundFlushThread();
     assertTrue(appender.backgroundThreadsRunning());
 
-    // Advance currentTimestamp to the millisecond before the timeout is
-    // triggered
     if (0 == numTimeoutSettingsToTest) {
+      // Don't log anything
       currentTimestamp = shutdownSoftTimeoutInMillis - 1;
-    } else {
-      // Log the necessary amount of events
-      if (1 == numTimeoutSettingsToTest) {
-        // Need to log enough to test just the soft shutdown timeout
+    } else if (1 == numTimeoutSettingsToTest) {
+      // Log two events to advance the soft shutdown timeout once before it
+      // expires. In each case, ensure the background threads continue to run.
+      for (int i = 0; i < 2; ++i) {
         appendLogEvent(currentTimestamp, Level.INFO, appender);
-        triggerContextSwitch();
+        waitForBackgroundFlushThread();
 
         currentTimestamp += shutdownSoftTimeoutInMillis - 1;
         setTimestampAndValidateThreadsState(currentTimestamp, true, appender);
-      } else {
-        // Need to log enough to test the soft and hard shutdown timeouts
-        // We need to log enough so we get close to the hard shutdown timeout
-        // without exceeding it.
-        for (int i = 0; i < numShutdownSoftTimeoutsInHardTimeout; ++i) {
-          appendLogEvent(currentTimestamp, Level.INFO, appender);
-          triggerContextSwitch();
-
-          currentTimestamp += shutdownSoftTimeoutInMillis - 1;
-          setTimestampAndValidateThreadsState(currentTimestamp, true, appender);
-        }
-        // Log one more event so we exceed the hard shutdown timeout and advance
-        // the timestamp to just before the hard timeout
-        appendLogEvent(currentTimestamp, Level.INFO, appender);
-        triggerContextSwitch();
-        currentTimestamp = shutdownSoftTimeoutInMillis * numShutdownSoftTimeoutsInHardTimeout - 1;
       }
+    } else {
+      // Log enough events so we get close to the hard shutdown timeout without
+      // exceeding it, all while the soft shutdown timeout is kept alive.
+      // Throughout, ensure the background threads continue to run.
+      for (int i = 0; i < numShutdownSoftTimeoutsInHardTimeout; ++i) {
+        appendLogEvent(currentTimestamp, Level.INFO, appender);
+        waitForBackgroundFlushThread();
+
+        currentTimestamp += shutdownSoftTimeoutInMillis - 1;
+        setTimestampAndValidateThreadsState(currentTimestamp, true, appender);
+      }
+      // Log one more event so we exceed the hard shutdown timeout and advance
+      // the timestamp to just before the hard timeout
+      appendLogEvent(currentTimestamp, Level.INFO, appender);
+      waitForBackgroundFlushThread();
+      currentTimestamp = shutdownSoftTimeoutInMillis * numShutdownSoftTimeoutsInHardTimeout - 1;
     }
 
     // Validate that the threads are running up until the timeout expires
@@ -376,7 +380,8 @@ public class TestRollingFileLogAppender {
   }
 
   /**
-   * Validates that a sync only occurs after the specified timestamp and not a time unit before
+   * Validates that a sync only occurs after the specified timestamp and not a
+   * time unit before
    * @param syncTimestamp Time when the sync should occur
    * @param expectedNumSyncs
    * @param expectedNumRollovers
@@ -392,30 +397,43 @@ public class TestRollingFileLogAppender {
   }
 
   /**
-   * Sets the appender's time to the given timestamp and validates that the threads are in the
+   * Sets the appender's time to the given timestamp and validates that the
+   * threads are in the
    * given state
    * @param timestamp
    * @param threadsShouldBeRunning
    * @param appender
    */
   private void setTimestampAndValidateThreadsState (long timestamp, boolean threadsShouldBeRunning,
-                                                    RollingFileTestAppender appender) {
+                                                    RollingFileTestAppender appender)
+  {
     appender.setTime(timestamp);
-    triggerContextSwitch();
-    assertTimeout(Duration.ofSeconds(1), () -> {
+    waitForBackgroundFlushThread();
+    assertTimeoutPreemptively(Duration.ofSeconds(1), () -> {
       while (appender.backgroundThreadsRunning() != threadsShouldBeRunning) {
       }
     });
   }
 
   /**
-   * Validates that the appender has triggered the given number of sync and sync-and-close events
+   * Imperfectly waits for the appender's background flush thread to make
+   * progress by simply sleeping for some amount of time
+   */
+  private void waitForBackgroundFlushThread () {
+    final long durationNecessaryForBackgroundFlushThreadProgress = 200;  // milliseconds
+    assertDoesNotThrow(() -> sleep(durationNecessaryForBackgroundFlushThreadProgress));
+  }
+
+  /**
+   * Validates that the appender has triggered the given number of sync and
+   * sync-and-close events
    * @param appender
    * @param numSyncs
    * @param numRollovers
    */
   private void validateNumSyncAndCloseEvents (RollingFileTestAppender appender, int numSyncs,
-                                              int numRollovers) {
+                                              int numRollovers)
+  {
     long sleepTime = timeoutCheckPeriod * 2;
     // Sleep so the background threads have a chance to process any syncs and
     // rollovers
@@ -436,14 +454,15 @@ public class TestRollingFileLogAppender {
   }
 
   /**
-   * Creates and initializes a RollingFileTestAppender for the tests. Note that this method doesn't
-   * call {@code activateOptions} on the appender.
+   * Creates and initializes a RollingFileTestAppender for the tests. Note that
+   * this method doesn't call {@code activateOptions} on the appender.
    * @param disableSoftTimeout
    * @param disableHardTimeout
    * @return The created appender
    */
   private RollingFileTestAppender createTestAppender (boolean disableSoftTimeout,
-                                                      boolean disableHardTimeout) {
+                                                      boolean disableHardTimeout)
+  {
     RollingFileTestAppender appender = new RollingFileTestAppender();
 
     // Set static settings
@@ -466,9 +485,5 @@ public class TestRollingFileLogAppender {
     appender.setFlushSoftTimeoutsInSeconds(disableSoftTimeout ? disabledTimeoutCsv : timeoutCsv);
 
     return appender;
-  }
-
-  private void triggerContextSwitch () {
-    assertDoesNotThrow(() -> sleep(DURATION_NECESSARY_TO_TRIGGER_CONTEXT_SWITCH));
   }
 }
