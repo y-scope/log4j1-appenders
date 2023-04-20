@@ -10,7 +10,7 @@ import org.apache.log4j.PatternLayout;
  * A class to extract all date conversion patterns from a Log4j conversion
  * pattern. This is useful for Log4j appenders that want to store a log event's
  * message separate from its timestamp.
- * <p></p>
+ * <p>
  * For example, given the conversion pattern:
  * <pre>"%d%d %d{HH:mm:ss' on 'yy/MM/dd}{GMT-5:30}%d %r %p %c{1}: %m%n"</pre>
  * This class would extract 5 date conversion patterns:
