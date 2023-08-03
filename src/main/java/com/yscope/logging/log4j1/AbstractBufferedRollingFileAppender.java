@@ -204,7 +204,7 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    * Sets the per-log-level soft timeouts for flushing.
    * <p>
    * NOTE: Timeouts for custom log-levels are not supported. Log events with
-   *    * these levels will be assigned the timeout of the INFO level.
+   * these levels will be assigned the timeout of the INFO level.
    * @param csvTimeouts A CSV string of kv-pairs. The key being the log-level in
    * all caps and the value being the soft timeout for flushing in seconds. E.g.
    * "INFO=180,WARN=15,ERROR=10"
