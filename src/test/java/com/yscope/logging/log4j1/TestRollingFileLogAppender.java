@@ -194,6 +194,22 @@ public class TestRollingFileLogAppender {
   }
 
   /**
+   * Tests custom log levels with the hard timeouts
+   */
+  @Test
+  public void testCustomLogLevelsWithHardTimeout () {
+    validateFlushTimeoutSupportForCustomLogLevels(false);
+  }
+
+  /**
+   * Tests custom log levels with the soft timeouts
+   */
+  @Test
+  public void testCustomLogLevelWithSoftTimeout () {
+    validateFlushTimeoutSupportForCustomLogLevels(true);
+  }
+
+  /**
    * Tests closing the appender with different closeOnShutdown settings
    */
   @Test
@@ -258,6 +274,37 @@ public class TestRollingFileLogAppender {
     currentTimestamp += flushInfoLevelTimeout * timeoutUnitInMilliseconds;
     appender.setTime(currentTimestamp);
     validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
+
+    // Verify a rollover after closing the appender
+    appender.close();
+    ++expectedNumRollovers;
+    validateNumSyncAndCloseEvents(appender, expectedNumSyncs, expectedNumRollovers);
+  }
+
+  /**
+   * Performs basic validation of flush timeout support for custom log levels
+   * (not specific to either soft/hard timeouts)
+   * @param testSoftTimeout Whether to test soft (true) or hard (false) timeout
+   * support
+   */
+  private void validateFlushTimeoutSupportForCustomLogLevels (boolean testSoftTimeout) {
+    int timeoutUnitInMilliseconds =
+        testSoftTimeout ? flushSoftTimeoutUnitInMilliseconds : flushHardTimeoutUnitInMilliseconds;
+    RollingFileTestAppender appender =
+        createTestAppender(false == testSoftTimeout, testSoftTimeout);
+    appender.activateOptions();
+    int expectedNumSyncs = 0;
+    int expectedNumRollovers = 0;
+    int currentTimestamp = 0;
+
+    // Verify an event with a custom log level can be handled and is assigned
+    // the INFO level timeout
+    appendLogEvent(currentTimestamp, new CustomLog4jLogLevel(Level.DEBUG_INT + 1, "DEBUG1",
+                                                             Level.DEBUG.getSyslogEquivalent()),
+                   appender);
+    currentTimestamp += flushInfoLevelTimeout * timeoutUnitInMilliseconds;
+    ++expectedNumSyncs;
+    validateSyncAfterTimeout(currentTimestamp, expectedNumSyncs, expectedNumRollovers, appender);
 
     // Verify a rollover after closing the appender
     appender.close();
@@ -485,5 +532,14 @@ public class TestRollingFileLogAppender {
     appender.setFlushSoftTimeoutsInSeconds(disableSoftTimeout ? disabledTimeoutCsv : timeoutCsv);
 
     return appender;
+  }
+}
+
+/**
+ * A custom Log4j Level class used for testing log events with custom log levels
+ */
+class CustomLog4jLogLevel extends Level {
+  public CustomLog4jLogLevel (int level, String levelStr, int syslogEquivalent) {
+    super(level, levelStr, syslogEquivalent);
   }
 }
