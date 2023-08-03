@@ -176,6 +176,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Sets the per-log-level hard timeouts for flushing.
+   * <p>
+   * NOTE: Timeouts for custom log-levels are not supported. Log events with
+   * these levels will be assigned the timeout of the INFO level.
    * @param csvTimeouts A CSV string of kv-pairs. The key being the log-level in
    * all caps and the value being the hard timeout for flushing in minutes. E.g.
    * "INFO=30,WARN=10,ERROR=5"
@@ -199,6 +202,9 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
 
   /**
    * Sets the per-log-level soft timeouts for flushing.
+   * <p>
+   * NOTE: Timeouts for custom log-levels are not supported. Log events with
+   * these levels will be assigned the timeout of the INFO level.
    * @param csvTimeouts A CSV string of kv-pairs. The key being the log-level in
    * all caps and the value being the soft timeout for flushing in seconds. E.g.
    * "INFO=180,WARN=15,ERROR=10"
@@ -514,11 +520,14 @@ public abstract class AbstractBufferedRollingFileAppender extends EnhancedAppend
    */
   private void updateFreshnessTimeouts (LoggingEvent loggingEvent) {
     Level level = loggingEvent.getLevel();
-    long timeoutTimestamp = loggingEvent.timeStamp + flushHardTimeoutPerLevel.get(level);
+    long flushHardTimeout = flushHardTimeoutPerLevel.computeIfAbsent(level,
+        v -> flushHardTimeoutPerLevel.get(Level.INFO));
+    long timeoutTimestamp = loggingEvent.timeStamp + flushHardTimeout;
     flushHardTimeoutTimestamp = Math.min(flushHardTimeoutTimestamp, timeoutTimestamp);
 
-    flushMaximumSoftTimeout = Math.min(flushMaximumSoftTimeout,
-                                       flushSoftTimeoutPerLevel.get(level));
+    long flushSoftTimeout = flushSoftTimeoutPerLevel.computeIfAbsent(level,
+        v -> flushSoftTimeoutPerLevel.get(Level.INFO));
+    flushMaximumSoftTimeout = Math.min(flushMaximumSoftTimeout, flushSoftTimeout);
     flushSoftTimeoutTimestamp = loggingEvent.timeStamp + flushMaximumSoftTimeout;
   }
 
